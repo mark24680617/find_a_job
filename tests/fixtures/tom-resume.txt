@@ -1,0 +1,41 @@
+Tom Candidate
+Portland, Oregon
+tom.candidate@example.com
+
+SUMMARY
+Backend engineer. Payments, queues, and the unglamorous parts of reliability.
+
+EXPERIENCE
+
+Northwind Logistics - Senior Backend Engineer
+March 2024 - present
+- Owns the payments service: 12,000 requests/day at a 99.95% success rate.
+- Cut p99 checkout latency from 840ms to 210ms by batching ledger writes.
+- Led the migration of 14 services from RabbitMQ to Kafka.
+- Mentors two junior engineers.
+
+Fenwick Software - Backend Engineer
+June 2020 - November 2022
+- Built the internal billing API used by 40 people across finance and support.
+- Reduced the monthly close from 6 days to 2.
+- On-call one week in four.
+
+PROJECTS
+
+Tidepool
+- An open-source CLI that diffs Postgres schemas between environments.
+- 1,200 GitHub stars.
+- Written in Go.
+
+EDUCATION
+
+Cascadia State University
+B.S. Computer Science, 2020
+GPA 3.6
+
+SKILLS
+Go, Python, PostgreSQL, Kafka, Terraform, gRPC
+AWS (ECS, RDS, SQS), Datadog
+
+LANGUAGES
+English (native), Portuguese (conversational)

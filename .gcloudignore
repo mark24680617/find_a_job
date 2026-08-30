@@ -1,0 +1,21 @@
+# Files NOT uploaded to Cloud Build by `gcloud run deploy --source .`.
+# Syntax is the same as .gitignore (see `gcloud topic gcloudignore`).
+
+.git
+
+# Reinstalled / rebuilt by the buildpack (npm ci + next build).
+node_modules
+.next
+tsconfig.tsbuildinfo
+
+# Not needed to build or run the service.
+tests
+docs
+.superpowers
+.impeccable.md
+AGENTS.md
+CLAUDE.md
+.DS_Store
+
+# Secrets: env vars are set on the service, never baked into the image.
+.env*

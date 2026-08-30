@@ -1,0 +1,24 @@
+rules_version = '2';
+
+// Deny everything. This is not a placeholder — it is the intended production rule.
+//
+// No browser in this product ever talks to Firestore. The client holds a Firebase Auth
+// session and nothing else; every read and write goes through a Next.js route handler that
+// verifies the caller's ID token (`requireUser` in src/lib/auth.ts) and then reaches the
+// database through the Admin SDK, which runs with service-account credentials and bypasses
+// these rules entirely. Data is scoped under `users/{uid}` by construction — see src/lib/db.ts —
+// so a caller who has authenticated one uid cannot address another's documents at all.
+//
+// That leaves the client SDK path, which is open to anyone who reads the Firebase web config
+// out of the shipped bundle (web API keys are public by design). Denying it closes the only
+// door that is not already guarded, and costs the app nothing because it never uses it.
+//
+// If a future feature genuinely needs a direct client read — a live listener, say — this file
+// is where that permission gets written, per collection, with an `request.auth.uid` match.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
