@@ -1,7 +1,6 @@
 'use client'
 
 import type { Question } from '@/lib/types'
-import { AddQuestion } from '@/components/review/AddQuestion'
 
 /**
  * The form's questions, as a ruled list you move through — a catalogue drawer, not a wall of
@@ -14,8 +13,8 @@ interface Props {
   questions: Question[]
   selected: number
   onSelect: (index: number) => void
-  /** Append one question the parse missed, without re-parsing. */
-  onAddQuestion: (q: Question) => Promise<void>
+  /** Open the intake to read more questions onto the end of the list, without re-parsing. */
+  onAddQuestion: () => void
 }
 
 const STATUS: Record<Question['status'], { label: string; dot: string }> = {
@@ -76,7 +75,11 @@ export function QuestionList({ questions, selected, onSelect, onAddQuestion }: P
           )
         })}
       </ul>
-      <AddQuestion onAdd={onAddQuestion} />
+      <div className="border-t border-line px-4 py-3">
+        <button type="button" className="btn-link text-sm" onClick={onAddQuestion}>
+          Add a question
+        </button>
+      </div>
     </nav>
   )
 }

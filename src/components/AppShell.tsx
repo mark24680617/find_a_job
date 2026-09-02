@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { SignInGate } from '@/components/SignInGate'
-import { signOutUser, watchUser } from '@/lib/firebase/client'
+import { readAdminClaim, signOutUser, watchUser } from '@/lib/firebase/client'
 
 /**
  * The frame every page sits in, and the only place in the app that subscribes to Firebase's
@@ -23,7 +23,15 @@ const NAV = [
   { href: '/', label: 'Dashboard' },
   { href: '/profile', label: 'Profile' },
   { href: '/applications/new', label: 'New Application' },
+  { href: '/account', label: 'Account' },
 ] as const
+
+const ADMIN_NAV = { href: '/admin', label: 'Admin' } as const
+
+/** The links this person gets. Admin is drawn from the token's claim; the server is the guard. */
+export function navItems(isAdmin: boolean): { href: string; label: string }[] {
+  return isAdmin ? [...NAV, ADMIN_NAV] : [...NAV]
+}
 
 /**
  * How a page tells the shell it is holding unsaved work. A callback rather than a boolean:
@@ -31,6 +39,19 @@ const NAV = [
  * that decides what a leave attempt does.
  */
 const UnsavedContext = createContext<(unsaved: boolean) => void>(() => {})
+
+/**
+ * The signed-in user, for the pages that are about them rather than their data. Null only
+ * outside the shell, which no page is — so the hook throws rather than making every caller
+ * handle a case that cannot happen.
+ */
+const UserContext = createContext<User | null>(null)
+
+export function useCurrentUser(): User {
+  const user = useContext(UserContext)
+  if (!user) throw new Error('useCurrentUser must be used inside AppShell')
+  return user
+}
 
 /** Declare that this page has edits that a navigation would discard. */
 export function useUnsavedChanges(unsaved: boolean): void {
@@ -47,6 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [ready, setReady] = useState(false)
   const [unsaved, setUnsaved] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const pathname = usePathname()
 
   useEffect(
@@ -54,6 +76,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       watchUser((next) => {
         setUser(next)
         setReady(true)
+        // Read once per sign-in. A failure means no link, which is the safe way to be wrong.
+        if (next) void readAdminClaim(next).then(setIsAdmin, () => setIsAdmin(false))
+        else setIsAdmin(false)
       }),
     [],
   )
@@ -84,60 +109,62 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (!user) return <SignInGate />
 
   return (
-    <UnsavedContext.Provider value={setUnsaved}>
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-8 gap-y-3 px-6 py-3.5">
-          <Link
-            href="/"
-            className="font-display text-base font-medium tracking-tight text-ink"
-            onClick={(e) => {
-              if (!mayLeave()) e.preventDefault()
-            }}
-          >
-            Find a Job
-          </Link>
-
-          <nav aria-label="Main" className="flex items-center gap-6 text-sm">
-            {NAV.map(({ href, label }) => {
-              const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-current={active ? 'page' : undefined}
-                  onClick={(e) => {
-                    if (!active && !mayLeave()) e.preventDefault()
-                  }}
-                  className={
-                    active
-                      ? 'border-b border-accent pb-0.5 font-medium text-ink'
-                      : 'border-b border-transparent pb-0.5 text-ink-2 hover:text-ink'
-                  }
-                >
-                  {label}
-                </Link>
-              )
-            })}
-          </nav>
-
-          <div className="ml-auto flex items-center gap-4 text-sm">
-            <span className="hidden max-w-[22ch] truncate text-ink-3 sm:inline" title={user.email ?? ''}>
-              {user.email ?? user.displayName ?? 'Signed in'}
-            </span>
-            <button
-              type="button"
-              className="btn-link"
-              onClick={() => {
-                if (mayLeave()) void signOutUser()
+    <UserContext.Provider value={user}>
+      <UnsavedContext.Provider value={setUnsaved}>
+        <header className="border-b border-line bg-surface">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-8 gap-y-3 px-6 py-3.5">
+            <Link
+              href="/"
+              className="font-display text-base font-medium tracking-tight text-ink"
+              onClick={(e) => {
+                if (!mayLeave()) e.preventDefault()
               }}
             >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+              Find a Job
+            </Link>
 
-      {children}
-    </UnsavedContext.Provider>
+            <nav aria-label="Main" className="flex items-center gap-6 text-sm">
+              {navItems(isAdmin).map(({ href, label }) => {
+                const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    aria-current={active ? 'page' : undefined}
+                    onClick={(e) => {
+                      if (!active && !mayLeave()) e.preventDefault()
+                    }}
+                    className={
+                      active
+                        ? 'border-b border-accent pb-0.5 font-medium text-ink'
+                        : 'border-b border-transparent pb-0.5 text-ink-2 hover:text-ink'
+                    }
+                  >
+                    {label}
+                  </Link>
+                )
+              })}
+            </nav>
+
+            <div className="ml-auto flex items-center gap-4 text-sm">
+              <span className="hidden max-w-[22ch] truncate text-ink-3 sm:inline" title={user.email ?? ''}>
+                {user.email ?? user.displayName ?? 'Signed in'}
+              </span>
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => {
+                  if (mayLeave()) void signOutUser()
+                }}
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {children}
+      </UnsavedContext.Provider>
+    </UserContext.Provider>
   )
 }

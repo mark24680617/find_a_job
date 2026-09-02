@@ -130,6 +130,14 @@ describe('POST .../questions/parse — what it accepts', () => {
     expect(getApplication).not.toHaveBeenCalled()
     expect(runFormParse).not.toHaveBeenCalled()
   })
+
+  it('400s an append flag that is not a boolean, without touching the model', async () => {
+    for (const bad of ['yes', 1, null, {}]) {
+      expect((await POST(post({ text: 'Q1', append: bad }), ctx('app-1'))).status).toBe(400)
+    }
+    expect(runFormParse).not.toHaveBeenCalled()
+    expect(updateApplication).not.toHaveBeenCalled()
+  })
 })
 
 describe('POST .../questions/parse — what it writes', () => {
@@ -223,5 +231,87 @@ describe('POST .../questions/parse — what it writes', () => {
     expect(body.questions[0].status).toBe('pending')
     expect(body.parsed?.scope).toBe('per-application')
     expect(body.company).toBe('TRM Labs')
+  })
+})
+
+// The other way a form's questions arrive: the form asked something the first parse missed, and
+// the answer is one more intake rather than a re-parse that would take every draft with it.
+describe('POST .../questions/parse — appending', () => {
+  const answered: Question[] = [
+    {
+      q: 'Self-introduction',
+      constraints: { type: 'long-text', required: true, limit: 150, unit: 'words' },
+      draft: { text: 'I built a payments platform.', citations: [] },
+      askHuman: [],
+      story: 'The billing job double-charged 40 accounts.',
+      final: 'I built a payments platform, end to end.',
+      status: 'final',
+    },
+    {
+      q: 'Where are you based?',
+      constraints: { type: 'short-text', required: false },
+      askHuman: [],
+      status: 'pending',
+    },
+  ]
+
+  it('keeps the answered questions first and in order, with everything written on them', async () => {
+    getApplication.mockResolvedValue(application({ questions: answered }))
+
+    await POST(post({ text: 'Q1', append: true }), ctx('app-1'))
+    const questions = patchOf().questions as Question[]
+    expect(questions).toHaveLength(4)
+    // Carried through by reference: the draft, the final and the story are all still there.
+    expect(questions[0]).toBe(answered[0])
+    expect(questions[1]).toBe(answered[1])
+    expect(questions.slice(2).map((q) => q.q)).toEqual([
+      'Why do you want to work here?',
+      'Where are you based?',
+    ])
+    expect(questions.slice(2).every((q) => q.status === 'pending' && q.askHuman.length === 0)).toBe(
+      true,
+    )
+  })
+
+  it('appends onto the read taken AFTER the model, so a question added in that window survives', async () => {
+    const late: Question = {
+      q: 'A question added while the model was reading',
+      constraints: { type: 'long-text', required: false },
+      askHuman: [],
+      status: 'pending',
+    }
+    getApplication
+      .mockResolvedValueOnce(application({ questions: answered }))
+      .mockResolvedValueOnce(application({ questions: [...answered, late] }))
+
+    await POST(post({ text: 'Q1', append: true }), ctx('app-1'))
+    const questions = patchOf().questions as Question[]
+    expect(questions).toHaveLength(5)
+    expect(questions[2]).toBe(late)
+  })
+
+  it('replaces wholesale when append is false, and when it is not sent at all', async () => {
+    for (const body of [{ text: 'Q1', append: false }, { text: 'Q1' }]) {
+      updateApplication.mockClear()
+      getApplication.mockResolvedValue(application({ questions: answered }))
+      await POST(post(body), ctx('app-1'))
+      const questions = updateApplication.mock.calls[0][2].questions as Question[]
+      expect(questions).toHaveLength(2)
+      expect(questions.map((q) => q.q)).not.toContain('Self-introduction')
+    }
+  })
+
+  it('returns the appended list it wrote', async () => {
+    getApplication.mockResolvedValue(application({ questions: answered }))
+    const res = await POST(post({ text: 'Q1', append: true }), ctx('app-1'))
+    const body = (await res.json()) as Application
+    expect(body.questions).toEqual(patchOf().questions)
+    expect(body.questions).toHaveLength(4)
+  })
+
+  it('answers an unknown scope from the form in append mode too', async () => {
+    getApplication.mockResolvedValue(application({ questions: answered }))
+    await POST(post({ text: 'Q1', append: true }), ctx('app-1'))
+    expect(patchOf().parsed).toEqual({ ...parsed, scope: 'per-application' })
   })
 })

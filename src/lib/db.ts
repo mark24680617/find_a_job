@@ -1,5 +1,5 @@
-import { adminDb } from '@/lib/firebase/admin'
-import type { Application, InterviewRound, Profile } from '@/lib/types'
+import { adminAuth, adminDb } from '@/lib/firebase/admin'
+import type { Application, InterviewRound, Profile, Usage } from '@/lib/types'
 
 // Firestore accessors. Everything is scoped under users/{uid}, so a caller that has
 // authenticated a uid cannot reach another user's data by construction. Mapping only —
@@ -88,4 +88,30 @@ export async function updateInterview(
   patch: Partial<InterviewRound>,
 ): Promise<void> {
   await roundsCol(uid, appId).doc(rid).update(patch)
+}
+
+/**
+ * How much an account holds, counted rather than read: the applications subcollection's
+ * aggregate, and the length of the facts array on the profile document. This is what the
+ * admin panel is allowed to know about anyone — numbers, not content. The qualifier is on
+ * what leaves the server: the profile document is read whole, because Firestore has no
+ * aggregate over an array field, and only its length is returned.
+ */
+export async function usageFor(uid: string): Promise<Usage> {
+  const [apps, profile] = await Promise.all([appsCol(uid).count().get(), getProfile(uid)])
+  return { applications: apps.data().count, facts: profile.facts.length }
+}
+
+/**
+ * Everything about one account, gone: the user document (which IS the profile), every
+ * application under it and every interview under those, and then the Auth user.
+ *
+ * Data first, Auth second, and the order matters. If the data delete fails the account is
+ * still there to sign in with and try again. If the Auth delete fails after the data is gone,
+ * the person can sign in to an empty account and delete once more. The reverse order can
+ * strand data under a uid that nothing can ever authenticate as again.
+ */
+export async function wipeUser(uid: string): Promise<void> {
+  await adminDb.recursiveDelete(userDoc(uid))
+  await adminAuth.deleteUser(uid)
 }

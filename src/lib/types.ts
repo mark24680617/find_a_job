@@ -58,3 +58,15 @@ export interface InterviewRound {
   chat: { role: 'user' | 'model'; text: string }[]
   createdAt: string
 }
+
+// How much one account holds — what the account page shows its owner and the admin table
+// shows the administrator. Counted, never listed: the panel does not read anyone's data.
+export interface Usage { applications: number; facts: number }
+// One row of the admin table. Dates are ISO on the wire (Firebase's own metadata strings are
+// not); `lastSignInAt` is null for an account that was created but never signed in.
+export interface AdminUser {
+  uid: string; email: string; emailVerified: boolean; displayName: string
+  provider: string          // 'google.com' | 'password' | anything else, verbatim; '' for none
+  createdAt: string; lastSignInAt: string | null
+  disabled: boolean; applications: number; facts: number
+}

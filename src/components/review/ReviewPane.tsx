@@ -26,8 +26,8 @@ import { Working } from '@/components/Working'
  * Every other change the human makes to the box is theirs until they save it, and the page is
  * told there is unsaved work so leaving is guarded.
  *
- * The parent remounts this per question (keyed on the index), so none of this state leaks from
- * one question to the next.
+ * The parent remounts this per question (keyed on the index and the length of the list), so
+ * none of this state leaks from one question to the next.
  */
 
 interface Props {
@@ -47,6 +47,8 @@ interface Props {
   onFactsChanged: () => void | Promise<void>
   /** Tell the page whether this question holds unsaved work — the answer box or the story. */
   onDirtyChange: (dirty: boolean) => void
+  /** Drop this question from the form. Resolves once it is gone, rejects with a message. */
+  onDelete: () => Promise<void>
 }
 
 /** The limit this answer must hit, computed without dragging the server-only flow into the client. */
@@ -91,6 +93,7 @@ export function ReviewPane({
   onAppChange,
   onFactsChanged,
   onDirtyChange,
+  onDelete,
 }: Props) {
   const question = app.questions[index]
   // What a save compares against: the saved final if there is one, else the draft it was seeded
@@ -114,6 +117,8 @@ export function ReviewPane({
   const [saveError, setSaveError] = useState('')
   const [saveNote, setSaveNote] = useState('')
   const [active, setActive] = useState<Citation | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   // The positioning round. `question.clarify` is the persisted set of questions the agent is
   // asking this time; `selections` is the human's unsaved answer to it, seeded from each
@@ -256,6 +261,26 @@ export function ReviewPane({
     }
   }
 
+  /**
+   * Drop the question from the form. Nothing here is recoverable — the draft, the story and
+   * whatever is in the answer box all go — so the confirm names them instead of asking a
+   * generic "are you sure". That one sentence covers the unsaved answer too, which is why
+   * there is no second prompt on top of it.
+   */
+  async function remove() {
+    if (!window.confirm('Delete this question? Its draft and your answer go with it.')) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await onDelete()
+      // `deleting` is deliberately left set on success: the list is one shorter, so this pane
+      // is being remounted, and clearing it would put the button back for that one frame.
+    } catch (err) {
+      setDeleteError(readable(message(err)) || 'That didn’t delete. Try again.')
+      setDeleting(false)
+    }
+  }
+
   const setCard = (id: string, next: CardState) =>
     setSelections((prev) => ({ ...prev, [id]: next }))
 
@@ -307,6 +332,9 @@ export function ReviewPane({
   }
 
   // A fresh round discards the positioning answers already given (Task 22), so it is confirmed.
+  // It sits inside the reopened panel rather than beside the draft: reaching it means reading
+  // the questions already asked first, which is what makes "ask me different ones" a judgement
+  // about them rather than the nearest link to the answer you don't like.
   function reclarify() {
     if (
       window.confirm(
@@ -317,6 +345,16 @@ export function ReviewPane({
     }
   }
 
+  // The cards are the thing on screen, in place of the draft and the controls under it.
+  const panelOpen = setupOpen && clarifyQuestions.length > 0
+
+  // Which job the amber box is doing. Before a draft it is the optional telling that would make
+  // a thin answer real; after one it is the only way to say what the answer got wrong, so it
+  // carries the adjustment and stops presenting itself as an extra. Not while the panel is
+  // reopened over a draft: the Adjust button that opens this box is not rendered then, so the
+  // box goes back to being the invitation — and to re-drafting from the cards, not past them.
+  const adjusting = question.draft !== undefined && !panelOpen
+
   const stated = statedLimit(question)
   const unit = stated?.unit ?? question.constraints.unit ?? 'words'
   const count = countUnits(finalText, unit)
@@ -326,29 +364,46 @@ export function ReviewPane({
 
   return (
     <section aria-labelledby="answer-heading" className="min-w-0">
-      <header>
-        <p className="text-xs font-medium uppercase tracking-[0.12em] text-ink-3">Question</p>
-        <h2 id="answer-heading" className="mt-1.5 max-w-[62ch] font-display text-[1.375rem] leading-snug tracking-tight text-ink">
-          {question.q}
-        </h2>
-        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-3">
-          {stated ? (
-            <span className="tnum">
-              Limit {stated.limit} {stated.unit}
-            </span>
-          ) : (
-            <span>No stated limit</span>
-          )}
-          <span aria-hidden="true">·</span>
-          <span>{question.constraints.required ? 'Required' : 'Optional'}</span>
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-ink-3">Question</p>
+          <h2 id="answer-heading" className="mt-1.5 max-w-[62ch] font-display text-[1.375rem] leading-snug tracking-tight text-ink">
+            {question.q}
+          </h2>
+          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-3">
+            {stated ? (
+              <span className="tnum">
+                Limit {stated.limit} {stated.unit}
+              </span>
+            ) : (
+              <span>No stated limit</span>
+            )}
+            <span aria-hidden="true">·</span>
+            <span>{question.constraints.required ? 'Required' : 'Optional'}</span>
+          </p>
+        </div>
+        {/* Against the question it removes, not down among the answer's own controls: it acts
+            on the whole row, and danger red is what this product spends on destruction. */}
+        <button
+          type="button"
+          className="btn btn-danger"
+          disabled={deleting}
+          onClick={() => void remove()}
+        >
+          {deleting ? 'Deleting…' : 'Delete question'}
+        </button>
       </header>
+      {deleteError && (
+        <p role="alert" className="mt-2 max-w-[62ch] text-sm text-danger">
+          {deleteError}
+        </p>
+      )}
 
       {/* Draft on the left, the fact behind a selected phrase on the right where there's room;
           stacked on anything narrower, the fact appearing just under the answer. */}
       <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_15rem] xl:items-start xl:gap-8">
         <div className="min-w-0">
-          {setupOpen && clarifyQuestions.length > 0 ? (
+          {panelOpen ? (
             // The positioning round is what's on screen: the cards, then draft-with-these.
             <section aria-labelledby="setup-heading" className="min-w-0">
               <h3
@@ -366,14 +421,17 @@ export function ReviewPane({
                   questions={clarifyQuestions}
                   selections={selections}
                   onChange={setCard}
-                  busy={drafting}
+                  busy={drafting || clarifying}
                 />
               </div>
+              {/* A fresh round can now be asked for from in here, so everything in the panel
+                  is disabled while one is being read — these cards and the draft they would
+                  feed are exactly what it is about to replace. */}
               <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={drafting}
+                  disabled={drafting || clarifying}
                   onClick={() => void draftWithSelections()}
                 >
                   {drafting ? 'Drafting…' : 'Draft with these'}
@@ -381,10 +439,18 @@ export function ReviewPane({
                 <button
                   type="button"
                   className="btn btn-quiet"
-                  disabled={drafting}
+                  disabled={drafting || clarifying}
                   onClick={() => setSetupOpen(false)}
                 >
                   Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-link text-sm"
+                  disabled={drafting || clarifying}
+                  onClick={reclarify}
+                >
+                  Ask different questions
                 </button>
               </div>
             </section>
@@ -398,6 +464,20 @@ export function ReviewPane({
                 onSelect={setActive}
               />
               <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+                {/* The loud action on a finished draft is saying what it got wrong, not asking
+                    for the same thing again — a re-draft with nothing new to go on writes
+                    another version of the same answer. Hidden while the box is open, because
+                    the box is where it went. */}
+                {!storyOpen && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={drafting || clarifying}
+                    onClick={() => setStoryOpen(true)}
+                  >
+                    Adjust
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn btn-quiet"
@@ -413,8 +493,9 @@ export function ReviewPane({
                 </p>
               </div>
 
-              {/* Positioning re-entry: adjust the same round, ask a fresh one, or set up for the
-                  first time on a draft that skipped it. */}
+              {/* Positioning re-entry: reopen the round already answered, or set up for the
+                  first time on a draft that skipped it. Asking a different round is a discard,
+                  so it lives inside the panel where those answers are on screen. */}
               {clarifyQuestions.length > 0 ? (
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                   <span className="text-ink-3">This answer was set up with your positioning.</span>
@@ -424,15 +505,7 @@ export function ReviewPane({
                     disabled={drafting || clarifying}
                     onClick={adjustSetup}
                   >
-                    Adjust
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-link"
-                    disabled={drafting || clarifying}
-                    onClick={reclarify}
-                  >
-                    {clarifying ? 'Reading the role…' : 'Ask me again'}
+                    Ask me again
                   </button>
                 </div>
               ) : (
@@ -495,8 +568,10 @@ export function ReviewPane({
               sits under whichever of the three states is on screen — setup, a draft, or the
               empty box — because the moment a person realises the draft is missing the real
               story is different every time. Collapsed until asked for; open already when
-              there is a telling stored. */}
-          <div className="mt-5">
+              there is a telling stored. Once there is a draft the collapsed invitation is not
+              rendered at all — the Adjust button above is what opens it — so the wrapper drops
+              its margin rather than leaving a gap where a link used to be. */}
+          <div className={storyOpen || !adjusting ? 'mt-5' : ''}>
             {storyOpen ? (
               <div className="min-w-0 border border-amber bg-amber-soft px-5 py-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -504,41 +579,77 @@ export function ReviewPane({
                     htmlFor="story"
                     className="max-w-[58ch] text-[0.9375rem] font-medium leading-snug text-ink"
                   >
-                    The story behind this answer
+                    {adjusting ? 'Adjust this answer' : 'The story behind this answer'}
                   </label>
                   {/* No fill here — the box is already amber-soft, so a filled chip on it is
-                      a chip nobody can see. */}
-                  <span className="shrink-0 text-xs font-medium tracking-wide text-amber">
-                    Optional
-                  </span>
+                      a chip nobody can see. And nothing to mark once there is a draft: fixing
+                      it is the work, not an option alongside it. */}
+                  {!adjusting && (
+                    <span className="shrink-0 text-xs font-medium tracking-wide text-amber">
+                      Optional
+                    </span>
+                  )}
                 </div>
                 <p className="mt-1.5 max-w-[58ch] text-sm leading-relaxed text-ink-2">
-                  Your resume says what you did. This is where you say what happened. It goes into
-                  the next draft, and into your profile — so the next question that needs it
-                  already has it.
+                  {adjusting
+                    ? 'Say what’s off — what to change, and what actually happened. It goes into the next draft, and into your profile — so the next question that needs it already has it.'
+                    : 'Your resume says what you did. This is where you say what happened. It goes into the next draft, and into your profile — so the next question that needs it already has it.'}
                 </p>
                 <textarea
                   id="story"
                   rows={7}
                   disabled={drafting || clarifying}
                   className="field field-boxed mt-3 px-3 py-2 text-[0.9375rem] leading-relaxed"
-                  placeholder="Rough is fine — what happened, what you did, what came of it. I’ll write it properly and remember it."
+                  placeholder={
+                    adjusting
+                      ? 'Rough is fine — what to change, what happened, what came of it. I’ll write it properly and remember it.'
+                      : 'Rough is fine — what happened, what you did, what came of it. I’ll write it properly and remember it.'
+                  }
                   value={story}
                   onChange={(e) => setStory(e.target.value)}
                 />
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-                  <button
-                    type="button"
-                    className="btn-link text-sm"
-                    disabled={drafting || clarifying}
-                    onClick={() => setStoryOpen(false)}
-                  >
-                    Hide
-                  </button>
-                  <p className="text-sm text-ink-2">It goes in with your next draft.</p>
+                  {adjusting ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={drafting || clarifying || story.trim() === ''}
+                        onClick={() => void draft([])}
+                      >
+                        Re-draft with this
+                      </button>
+                      {/* Puts the text back to what is stored, not just out of sight: the
+                          unsaved-work guard watches this box, and it should not go on warning
+                          about a telling the person has just taken back. */}
+                      <button
+                        type="button"
+                        className="btn btn-quiet"
+                        disabled={drafting || clarifying}
+                        onClick={() => {
+                          setStoryOpen(false)
+                          setStory(question.story ?? '')
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-link text-sm"
+                        disabled={drafting || clarifying}
+                        onClick={() => setStoryOpen(false)}
+                      >
+                        Hide
+                      </button>
+                      <p className="text-sm text-ink-2">It goes in with your next draft.</p>
+                    </>
+                  )}
                 </div>
               </div>
-            ) : (
+            ) : adjusting ? null : (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <button
                   type="button"

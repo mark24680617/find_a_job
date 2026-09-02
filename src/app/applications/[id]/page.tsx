@@ -44,6 +44,7 @@ function ApplicationWorkspace({ id }: { id: string }) {
   const [selected, setSelected] = useState(0)
   const [selectedDirty, setSelectedDirty] = useState(false)
   const [reparsing, setReparsing] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   const [marking, setMarking] = useState(false)
   const [markError, setMarkError] = useState('')
@@ -112,25 +113,38 @@ function ApplicationWorkspace({ id }: { id: string }) {
   }
 
   /**
-   * Add one question the parse missed. Append-only: the whole current array is sent, so the
-   * drafts and finals already on the other questions survive the PATCH. Single-user MVP — the
-   * same last-writer-wins the Mark-applied path accepts. Throws a readable message on failure so
-   * the add-question form can surface it; on success the new question is selected (guarded, so
-   * unsaved edits on the current one still prompt before the jump).
+   * Add the questions the parse missed, through the same intake the form started with — it
+   * reads pasted text and screenshots, and appends what it finds. It takes over the whole
+   * screen, so it unmounts the pane and its unsaved answer along with it: guarded like a
+   * question switch, for the same reason and with the same specific sentence.
    */
-  async function addQuestion(newQ: Question) {
+  function startAdding() {
+    if (selectedDirty && !window.confirm('Add questions? Your unsaved edits will be lost.')) return
+    setAdding(true)
+  }
+
+  /**
+   * Drop one question the form does not actually ask. The whole remaining array is sent, so
+   * every other question's draft and final survive the PATCH — the same last-writer-wins the
+   * mark-applied path accepts on a single-user MVP. Throws a readable message on failure so
+   * the pane can surface it; the pane has already asked before calling this.
+   */
+  async function deleteQuestion(index: number) {
     if (!app) return
     try {
       const updated = await apiFetch<Application>(`/api/applications/${app.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questions: [...app.questions, newQ] }),
+        body: JSON.stringify({ questions: app.questions.filter((_, i) => i !== index) }),
       })
       setApp(updated)
-      select(updated.questions.length - 1)
+      // Deleting the last one leaves `selected` past the end of a shorter list. `current`
+      // clamps for the render, but `select` compares against `selected` — so the row already
+      // on screen would read as a switch and warn about edits nothing is about to lose.
+      setSelected((s) => Math.min(s, Math.max(0, updated.questions.length - 1)))
     } catch (err) {
       throw new Error(
-        readable(err instanceof Error ? err.message : '') || 'That didn’t save. Try again.',
+        readable(err instanceof Error ? err.message : '') || 'That didn’t delete. Try again.',
       )
     }
   }
@@ -256,15 +270,23 @@ function ApplicationWorkspace({ id }: { id: string }) {
         onLogged={reloadApp}
       />
 
-      {!hasQuestions || reparsing ? (
+      {!hasQuestions || reparsing || adding ? (
         <QuestionsIntake
           app={app}
+          append={adding}
           onParsed={(next) => {
+            // An append lands on the first question it just added — that is what the person
+            // came here to write. Read before the state moves, since `app` is the pre-parse
+            // record; `current` clamps, so a parse that added nothing stays in range.
+            const landOn = adding ? app.questions.length : 0
             setApp(next)
+            setAdding(false)
             setReparsing(false)
-            setSelected(0)
+            setSelected(landOn)
           }}
-          onCancel={reparsing ? () => setReparsing(false) : undefined}
+          onCancel={
+            reparsing ? () => setReparsing(false) : adding ? () => setAdding(false) : undefined
+          }
         />
       ) : (
         <>
@@ -283,10 +305,15 @@ function ApplicationWorkspace({ id }: { id: string }) {
               questions={questions}
               selected={current}
               onSelect={select}
-              onAddQuestion={addQuestion}
+              onAddQuestion={startAdding}
             />
+            {/* Keyed on the length as well as the index: after deleting question k, the one
+                that was at k+1 sits at k, and an index-only key would hand a different
+                question the old pane's state — its story box, its open setup panel, its
+                selected citation. A re-parse and an append move the length too, and both
+                want the same fresh pane. */}
             <ReviewPane
-              key={current}
+              key={`${current}:${questions.length}`}
               app={app}
               index={current}
               factsById={factsById}
@@ -294,6 +321,7 @@ function ApplicationWorkspace({ id }: { id: string }) {
               onAppChange={setApp}
               onFactsChanged={loadFacts}
               onDirtyChange={setSelectedDirty}
+              onDelete={() => deleteQuestion(current)}
             />
           </div>
         </>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { signInWithEmail, signInWithGoogle, signUpWithEmail } from '@/lib/firebase/client'
+import { authMessage } from '@/lib/authMessage'
 
 /**
  * The sign-in wall. Two ways in, because the Google provider may or may not be switched on in
@@ -12,51 +13,6 @@ import { signInWithEmail, signInWithGoogle, signUpWithEmail } from '@/lib/fireba
  */
 
 const TAGLINE = 'Your story is unique. AI helps you tell it — it doesn’t replace it.'
-
-/**
- * Firebase throws `FirebaseError` with a machine code and a message written for developers
- * ("Firebase: Error (auth/invalid-credential)."). Show the person what went wrong instead.
- */
-function authMessage(error: unknown, kind: 'google' | 'email'): string {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : ''
-  // The person reading the screen cannot act on `auth/unauthorized-domain`; whoever is running
-  // the app can. The code goes to the console so a failure is never a dead end for both of them.
-  console.warn('sign-in failed:', code || error)
-  switch (code) {
-    case 'auth/invalid-credential':
-    case 'auth/wrong-password':
-    case 'auth/user-not-found':
-      return 'Wrong email or password.'
-    case 'auth/invalid-email':
-      return 'That doesn’t look like an email address.'
-    case 'auth/email-already-in-use':
-      return 'That email already has an account. Sign in instead.'
-    case 'auth/weak-password':
-      return 'Passwords need at least 6 characters.'
-    case 'auth/too-many-requests':
-      return 'Too many attempts. Wait a minute, then try again.'
-    // Fires for whichever provider is switched off in the Firebase console, so it can only be
-    // read against the button that was actually pressed. Naming the wrong one sends the person
-    // to a method that is equally dead.
-    case 'auth/operation-not-allowed':
-      return kind === 'google'
-        ? 'Google sign-in isn’t enabled yet. Use your email and password.'
-        : 'Email and password sign-in isn’t enabled for this app yet.'
-    // Firebase only allows OAuth pop-ups from domains on its authorized list, and a fresh
-    // project does not have localhost on it. Nothing the person at the keyboard can fix.
-    case 'auth/unauthorized-domain':
-      return 'Google sign-in isn’t available on this address. Use your email and password.'
-    case 'auth/popup-blocked':
-      return 'Your browser blocked the Google window. Allow pop-ups, or use your email.'
-    case 'auth/popup-closed-by-user':
-    case 'auth/cancelled-popup-request':
-      return 'The Google window closed before sign-in finished.'
-    case 'auth/network-request-failed':
-      return 'We couldn’t reach Firebase. Check your connection and try again.'
-    default:
-      return 'Sign-in failed. Try again.'
-  }
-}
 
 export function SignInGate() {
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')

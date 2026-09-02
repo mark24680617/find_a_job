@@ -11,7 +11,9 @@ import type { Application, Question } from '@/lib/types'
 // Parsing REPLACES `questions` wholesale: the newest intake is the description of the form,
 // and a question list half from one screenshot and half from another is a list that matches
 // no form that exists. Drafts on the old questions go with them, so the UI (Task 12) asks
-// before re-parsing a form that already has answers.
+// before re-parsing a form that already has answers. `append: true` is the other case — the
+// form asks something this parse missed, so the read questions go on the END of the list and
+// nothing already drafted is touched.
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -56,6 +58,12 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   if (!text && images.length === 0) {
     return Response.json({ error: 'send text or images' }, { status: 400 })
   }
+  // Which of the two writes this is. Refused rather than coerced: a truthy string here would
+  // silently turn a replace into an append, or the reverse, on somebody's only copy of a draft.
+  const append = (body as Record<string, unknown> | null)?.append
+  if (append !== undefined && typeof append !== 'boolean') {
+    return Response.json({ error: 'append must be true or false' }, { status: 400 })
+  }
 
   const { id } = await ctx.params
   // Read once before the model call so a form parsed against an application that is not
@@ -75,10 +83,14 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   const app = await getApplication(user.uid, id)
   if (!app) return Response.json({ error: 'not found' }, { status: 404 })
 
+  const read = out.questions.map(
+    (q): Question => ({ q: q.q, constraints: q.constraints, askHuman: [], status: 'pending' }),
+  )
+  // Composed from that fresh read in both modes, so an append carries the existing questions
+  // through by reference — drafts, finals, stories and positioning intact — including one that
+  // landed while the model was reading.
   const patch: Partial<Application> = {
-    questions: out.questions.map(
-      (q): Question => ({ q: q.q, constraints: q.constraints, askHuman: [], status: 'pending' }),
-    ),
+    questions: append ? [...app.questions, ...read] : read,
   }
   // The posting could not tell whether this material attaches to one requisition or to a
   // platform profile; the form itself often can. Only that one field is overwritten, and

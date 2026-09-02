@@ -14,6 +14,10 @@ import type { Application } from '@/lib/types'
  * and a list half from one screenshot and half from another matches no form that exists. So on
  * a re-parse this says exactly what is lost before it happens, and the button names the count
  * it will replace. That is the confirmation: a specific sentence, not a generic dialog.
+ *
+ * In `append` mode the same intake reads a question the first parse missed onto the END of the
+ * list instead. Nothing is lost, so nothing is warned about — the whole re-parse apparatus is
+ * off, on a form that has questions and drafts.
  */
 
 // Kept in step with the server's `IMAGE_MIMES`. Held here rather than imported so a client
@@ -41,9 +45,11 @@ interface Props {
   onParsed: (app: Application) => void
   /** Present only when re-parsing an existing form, to back out without replacing anything. */
   onCancel?: () => void
+  /** Add to the list rather than replace it — the parsed questions go on the end. */
+  append?: boolean
 }
 
-export function QuestionsIntake({ app, onParsed, onCancel }: Props) {
+export function QuestionsIntake({ app, onParsed, onCancel, append = false }: Props) {
   const [text, setText] = useState('')
   const [shots, setShots] = useState<Shot[]>([])
   const [dragging, setDragging] = useState(false)
@@ -53,7 +59,9 @@ export function QuestionsIntake({ app, onParsed, onCancel }: Props) {
   const existing = app.questions.length
   const drafted = app.questions.filter((q) => q.status === 'drafted').length
   const finalized = app.questions.filter((q) => q.status === 'final').length
-  const reparsing = existing > 0
+  // Only a write that replaces something needs the warning and the danger button, so appending
+  // onto a form that already has questions is not a re-parse.
+  const reparsing = existing > 0 && !append
 
   const canParse = (text.trim() !== '' || shots.length > 0) && !busy
 
@@ -92,6 +100,7 @@ export function QuestionsIntake({ app, onParsed, onCancel }: Props) {
           body: JSON.stringify({
             text: text.trim() || undefined,
             images: shots.map(({ base64, mime }) => ({ base64, mime })),
+            ...(append ? { append: true } : {}),
           }),
         },
       )
@@ -110,11 +119,12 @@ export function QuestionsIntake({ app, onParsed, onCancel }: Props) {
     <section aria-labelledby="intake-heading" className="mt-8 border border-line bg-surface">
       <div className="border-b border-line px-5 py-4">
         <h2 id="intake-heading" className="font-display text-lg tracking-tight text-ink">
-          {reparsing ? 'Re-parse the form' : 'The form’s questions'}
+          {append ? 'Add questions' : reparsing ? 'Re-parse the form' : 'The form’s questions'}
         </h2>
         <p className="mt-1 max-w-[64ch] text-sm leading-relaxed text-ink-2">
-          Paste the questions, or drop screenshots of the form — or both. They become the list
-          you answer, one at a time.
+          {append
+            ? 'Paste the questions, or drop screenshots — or both. They go on the end of the list; nothing already drafted is touched.'
+            : 'Paste the questions, or drop screenshots of the form — or both. They become the list you answer, one at a time.'}
         </p>
       </div>
 
@@ -221,9 +231,11 @@ export function QuestionsIntake({ app, onParsed, onCancel }: Props) {
           >
             {busy
               ? 'Reading…'
-              : reparsing
-                ? `Replace ${existing} question${existing === 1 ? '' : 's'}`
-                : 'Read the questions'}
+              : append
+                ? 'Add the questions'
+                : reparsing
+                  ? `Replace ${existing} question${existing === 1 ? '' : 's'}`
+                  : 'Read the questions'}
           </button>
           {onCancel && (
             <button type="button" className="btn btn-quiet" disabled={busy} onClick={onCancel}>

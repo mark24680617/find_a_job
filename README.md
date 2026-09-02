@@ -62,9 +62,21 @@ login` is what gives the server side its Firestore credentials locally; on Cloud
 code picks up the runtime service account instead.
 
 ```sh
-npm test          # 746 tests
+npm test          # 821 tests
 npm run build     # production build, typecheck included
 ```
+
+### Making yourself the administrator
+
+The admin panel (`/admin`) is shown to the one account whose ID token carries the `admin`
+claim. Set it once, from a machine with `gcloud auth application-default login` done:
+
+```sh
+npx tsx --env-file=.env.local scripts/grant-admin.ts you@example.com
+```
+
+Sign out and back in to pick the claim up now; otherwise it arrives within the hour.
+`--revoke` takes it away again.
 
 ## Deploying
 

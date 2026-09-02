@@ -57,3 +57,6 @@ AGENTS.md
 .impeccable.md
 docs/
 .superpowers/
+
+# Serena (per-developer language-server config, created on project activation)
+.serena/
