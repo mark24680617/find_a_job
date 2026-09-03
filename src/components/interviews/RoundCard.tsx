@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { BriefView } from '@/components/interviews/BriefView'
 import { apiDownload } from '@/lib/apiFetch'
@@ -50,9 +51,19 @@ export function RoundCard({ appId, round, briefFailed = false }: Props) {
   return (
     <article className="min-w-0 border border-line bg-surface px-5 py-4">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        <span className="chip shrink-0 uppercase tracking-[0.12em]">
+        {/*
+          The card is the summary; the page is the round. A chip is a label everywhere else in
+          the product, so this one has to answer the pointer to read as the way in — quiet at
+          rest, pine on touch. And two rounds of the same kind produce two chips reading
+          "Technical", so the name carries the time as well; a screen reader hears which one.
+        */}
+        <Link
+          href={`/applications/${appId}/interviews/${round.id}`}
+          aria-label={`Open ${ROUND_LABEL[round.roundType]} round${when ? `, ${when}` : ''}`}
+          className="chip shrink-0 uppercase tracking-[0.12em] transition-colors hover:border-accent hover:text-accent"
+        >
           {ROUND_LABEL[round.roundType]}
-        </span>
+        </Link>
         {when ? (
           <time dateTime={round.datetime} className="tnum text-[0.9375rem] text-ink">
             {when}

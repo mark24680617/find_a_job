@@ -44,7 +44,9 @@ export class FlowOutputError extends Error {
 }
 
 /** The Genkit call, injectable so tests can exercise this file without an API key. */
-export type GenerateCall = (options: GenerateOptions) => Promise<{ output: unknown }>
+export type GenerateCall = (
+  options: GenerateOptions,
+) => Promise<{ output: unknown; text?: string; custom?: unknown }>
 
 const callGenkit: GenerateCall = (options) => ai.generate(options)
 
@@ -107,4 +109,77 @@ export async function generateStructured<T>(
   throw new FlowOutputError(`generateStructured failed after one retry: ${second.error}`, {
     cause: second.cause,
   })
+}
+
+export interface GenerateGroundedOptions {
+  parts: Part[]
+  system?: string
+  thinkingBudget?: number
+}
+
+export interface GroundedResult {
+  text: string
+  /**
+   * The pages Google grounded the answer on — through its redirect, resolved by the caller.
+   * A chunk with an empty uri is a placeholder that holds the index: supports cite chunks by
+   * position, so one we cannot read still occupies its slot. Consumers skip an empty uri.
+   */
+  chunks: { title: string; uri: string }[]
+  /** Which sentences of the text rest on which chunks. */
+  supports: { text: string; chunkIndices: number[] }[]
+}
+
+const asRecord = (v: unknown): Record<string, unknown> | null =>
+  typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
+
+/**
+ * The one call that may read the web: Gemini's built-in Google Search, and no output
+ * schema — grounding and JSON mode do not combine reliably, so the caller parses lines. The
+ * sources come out of the response's metadata, never its prose; a model that writes a URL
+ * into its text has written nothing this product will show. Errors propagate: whether a
+ * refused search is fatal is the caller's call, and here it is not.
+ */
+export async function generateGrounded(
+  opts: GenerateGroundedOptions,
+  generate: GenerateCall = callGenkit,
+): Promise<GroundedResult> {
+  const response = await generate({
+    model,
+    system: opts.system,
+    prompt: opts.parts,
+    config: {
+      temperature: 0,
+      thinkingConfig: { thinkingBudget: opts.thinkingBudget ?? 0 },
+      tools: [{ googleSearch: {} }],
+    },
+  })
+  const candidates = asRecord(response.custom)?.candidates
+  const meta = Array.isArray(candidates) ? asRecord(asRecord(candidates[0])?.groundingMetadata) : null
+  const chunks: GroundedResult['chunks'] = []
+  const rawChunks = meta?.groundingChunks
+  if (Array.isArray(rawChunks)) {
+    for (const c of rawChunks) {
+      const web = asRecord(asRecord(c)?.web)
+      // Every raw chunk gets an entry, readable or not: a support names its sources by index
+      // into this list, and skipping one would shift every later index onto the wrong page.
+      chunks.push(
+        web && typeof web.uri === 'string'
+          ? { uri: web.uri, title: typeof web.title === 'string' ? web.title : '' }
+          : { uri: '', title: '' },
+      )
+    }
+  }
+  const supports: GroundedResult['supports'] = []
+  const rawSupports = meta?.groundingSupports
+  if (Array.isArray(rawSupports)) {
+    for (const s of rawSupports) {
+      const rec = asRecord(s)
+      const segment = asRecord(rec?.segment)
+      const indices = rec?.groundingChunkIndices
+      if (segment && typeof segment.text === 'string' && Array.isArray(indices)) {
+        supports.push({ text: segment.text, chunkIndices: indices.filter((i): i is number => typeof i === 'number') })
+      }
+    }
+  }
+  return { text: response.text ?? '', chunks, supports }
 }

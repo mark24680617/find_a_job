@@ -48,6 +48,19 @@ describe('RoundCard', () => {
     expect(out).toMatch(/datetime="2026-09-03T21:00:00\.000Z"/i)
   })
 
+  it('opens the round page from a chip that answers the pointer and names itself', () => {
+    const out = html()
+    expect(out).toContain('href="/applications/app-1/interviews/r-1"')
+    // A chip is a label everywhere else in the product, so this one has to say it is a link.
+    expect(out).toMatch(/class="[^"]*hover:border-accent[^"]*"/)
+    // Two rounds of the same kind would otherwise be two links both named "Recruiter screen".
+    expect(out).toMatch(/aria-label="Open Recruiter screen round, [^"]+"/)
+  })
+
+  it('names the chip without a time when the notice stated none', () => {
+    expect(html({ datetime: undefined })).toContain('aria-label="Open Recruiter screen round"')
+  })
+
   it('says the notice stated no time rather than showing a blank, and hides the export', () => {
     const out = html({ datetime: undefined })
     expect(out).toContain('Time not stated')

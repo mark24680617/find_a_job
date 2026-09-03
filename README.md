@@ -52,6 +52,8 @@ npm run dev                         # http://localhost:3000
 | `NEXT_PUBLIC_FB_AUTH_DOMAIN` | same panel — `your-project.firebaseapp.com` |
 | `NEXT_PUBLIC_FB_PROJECT_ID` | same panel |
 | `NEXT_PUBLIC_FB_APP_ID` | same panel — `1:000000000000:web:…` |
+| `REDDIT_CLIENT_ID` | *optional, for Reddit write-ups* — <https://www.reddit.com/prefs/apps>, "create app" → **installed app**. Reddit refuses its public JSON to servers, so without an id the research reads no Reddit at all |
+| `REDDIT_CLIENT_SECRET` | *optional* — leave unset for an installed app, which has none |
 
 Two things have to be switched on in the Firebase project itself: **Firestore** in Native mode,
 and the **Email/password** and **Google** sign-in providers under Authentication. `localhost` is
@@ -62,7 +64,7 @@ login` is what gives the server side its Firestore credentials locally; on Cloud
 code picks up the runtime service account instead.
 
 ```sh
-npm test          # 821 tests
+npm test          # 968 tests
 npm run build     # production build, typecheck included
 ```
 

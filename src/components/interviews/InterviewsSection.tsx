@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { NoticeIntake } from '@/components/interviews/NoticeIntake'
 import { RoundCard } from '@/components/interviews/RoundCard'
-import { apiFetch } from '@/lib/apiFetch'
 import type { InterviewRound } from '@/lib/types'
 
 /**
@@ -14,44 +13,36 @@ import type { InterviewRound } from '@/lib/types'
  * promise the product has not kept yet. The rounds come first and the intake sits under them:
  * a second round is logged against what the first one already said.
  *
- * A failed load is quiet rather than fatal. The rounds are one part of this screen and the
- * questions are the rest of it; losing the list should not take the page down with it.
+ * The list itself belongs to the page rather than to this section: the process map above draws
+ * the same rounds pinned to the stages they map to, and two components each holding their own
+ * copy meant logging a round moved one and left the other showing yesterday's answer.
  */
 
 interface Props {
   appId: string
+  rounds: InterviewRound[]
   /** Whether the paste-a-notice panel is open. Owned by the page — the button is in its header. */
   open: boolean
   onClose: () => void
-  /** A round landed: the application's status and timeline moved server-side, so re-read it. */
-  onLogged: () => void
+  /**
+   * A round landed. The page adds it to the list so the card is on screen before any request
+   * comes back, and re-reads the record, whose status and timeline moved server-side.
+   */
+  onLogged: (round: InterviewRound) => void
 }
 
-export function InterviewsSection({ appId, open, onClose, onLogged }: Props) {
-  const [rounds, setRounds] = useState<InterviewRound[]>([])
+export function InterviewsSection({ appId, rounds, open, onClose, onLogged }: Props) {
   // The round logged just now whose brief the model could not write. Held by id, so the note
   // sits on that card alone and an older round without a brief stays quiet about it.
   const [briefFailedFor, setBriefFailedFor] = useState('')
-
-  useEffect(() => {
-    let live = true
-    apiFetch<InterviewRound[]>(`/api/applications/${appId}/interviews`)
-      .then((next) => live && setRounds(next))
-      // Leave the list empty; the questions below are the rest of the screen.
-      .catch(() => {})
-    return () => {
-      live = false
-    }
-  }, [appId])
 
   if (rounds.length === 0 && !open) return null
 
   return (
     <section aria-labelledby="interviews-heading" className="mt-8">
-      <h2
-        id="interviews-heading"
-        className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-ink-2"
-      >
+      {/* Peer of "What to expect" above it, and set like it: the two sections are siblings on
+          this screen, so neither may outrank the other. Their sub-labels are the eyebrows. */}
+      <h2 id="interviews-heading" className="font-display text-lg tracking-tight text-ink">
         Interviews
       </h2>
 
@@ -70,10 +61,9 @@ export function InterviewsSection({ appId, open, onClose, onLogged }: Props) {
             appId={appId}
             onCancel={onClose}
             onLogged={(round, briefFailed) => {
-              setRounds((prev) => [...prev, round])
               setBriefFailedFor(briefFailed ? round.id : '')
               onClose()
-              onLogged()
+              onLogged(round)
             }}
           />
         )}

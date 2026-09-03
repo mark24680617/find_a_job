@@ -1,0 +1,11 @@
+{ "candidates": [ { "groundingMetadata": {
+  "webSearchQueries": ["\"Marram Systems\" interview process"],
+  "groundingChunks": [
+    { "web": { "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AAA", "title": "reddit.com" } },
+    { "web": { "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/BBB", "title": "Marram Systems Careers" } }
+  ],
+  "groundingSupports": [
+    { "segment": { "startIndex": 0, "endIndex": 52, "text": "The loop opens with a 30-minute recruiter screen." }, "groundingChunkIndices": [1], "confidenceScores": [0.9] },
+    { "segment": { "startIndex": 53, "endIndex": 110, "text": "A take-home follows, usually three days." }, "groundingChunkIndices": [0, 1], "confidenceScores": [0.8, 0.7] }
+  ]
+} } ] }

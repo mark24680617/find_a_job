@@ -213,10 +213,16 @@
    * A small ruled label on a record: a word limit, a status. Bordered rather than filled —
    * a filled badge would compete with amber, which has to stay the only colour that means
    * "only you know this".
+   *
+   * The floor is 24px because a chip is sometimes a link — the round card's kind chip is the
+   * whole hit area of that row — and 24px is the smallest target WCAG 2.5.8 accepts. At this
+   * size and line height the text is 20.8px tall, so the floor adds a hair of height and
+   * `align-items: center` keeps the label where it was.
    */
   .chip {
     display: inline-flex;
     align-items: center;
+    min-height: 1.5rem;
     border: 1px solid var(--line);
     padding: 0.125rem 0.375rem;
     font-size: 0.75rem;
@@ -336,7 +342,9 @@
   }
 
   /* A native disclosure with its own mark: the browser's triangle is replaced by a chevron
-     drawn from two borders, so it matches the rules of the list it sits in. */
+     drawn from two borders, so it matches the rules of the list it sits in. The class sits on
+     the section for a list of them, or on a lone `<details>` — hence the second open selector,
+     which is the same rule for the case where the marked element is the disclosure itself. */
   .faq summary {
     list-style: none;
     cursor: pointer;
@@ -358,7 +366,8 @@
     transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .faq details[open] summary::after {
+  .faq details[open] summary::after,
+  details.faq[open] summary::after {
     transform: translateY(2px) rotate(225deg);
   }
 

@@ -4,12 +4,13 @@ import { useRouter } from 'next/navigation'
 import { use, useCallback, useEffect, useState } from 'react'
 import { AppShell, useUnsavedChanges } from '@/components/AppShell'
 import { InterviewsSection } from '@/components/interviews/InterviewsSection'
+import { ProcessSection } from '@/components/process/ProcessSection'
 import { QuestionList } from '@/components/review/QuestionList'
 import { ReviewPane } from '@/components/review/ReviewPane'
 import { QuestionsIntake } from '@/components/wizard/QuestionsIntake'
 import { apiFetch } from '@/lib/apiFetch'
 import { readable } from '@/lib/readable'
-import type { Application, Fact, Profile, Question } from '@/lib/types'
+import type { Application, Fact, InterviewRound, Profile, Question } from '@/lib/types'
 
 /**
  * The application workspace: the screen where a form gets answered.
@@ -39,6 +40,10 @@ function ApplicationWorkspace({ id }: { id: string }) {
   // Facts indexed by id so a citation can show the claim and source behind it. A failed profile
   // load degrades citations to "source not found" rather than blocking the whole screen.
   const [factsById, setFactsById] = useState<Map<string, Fact>>(new Map())
+  // The rounds logged against this application, held once for the whole screen: the process
+  // map pins them onto its ledger and the interviews section draws them as cards. A copy in
+  // each would drift the moment one was logged.
+  const [rounds, setRounds] = useState<InterviewRound[]>([])
   const [loadError, setLoadError] = useState('')
 
   const [selected, setSelected] = useState(0)
@@ -66,6 +71,18 @@ function ApplicationWorkspace({ id }: { id: string }) {
     [],
   )
 
+  /**
+   * Re-read the logged rounds. Best-effort like the facts: the questions below are the rest of
+   * the screen, and a list that failed to load should not take the page down with it.
+   */
+  const loadRounds = useCallback(
+    () =>
+      apiFetch<InterviewRound[]>(`/api/applications/${id}/interviews`)
+        .then(setRounds)
+        .catch(() => {}),
+    [id],
+  )
+
   useEffect(() => {
     let live = true
     apiFetch<Application>(`/api/applications/${id}`)
@@ -79,18 +96,24 @@ function ApplicationWorkspace({ id }: { id: string }) {
           ),
       )
     void loadFacts()
+    void loadRounds()
     return () => {
       live = false
     }
-  }, [id, loadFacts])
+  }, [id, loadFacts, loadRounds])
 
-  /** Re-read the record after a round is logged: the POST moved its status and timeline. */
+  /**
+   * Re-read the record after a round is logged: the POST moved its status and timeline. The
+   * rounds are re-read with it, so the list the screen goes on drawing is the server's and not
+   * whatever the optimistic append left behind.
+   */
   const reloadApp = useCallback(() => {
     apiFetch<Application>(`/api/applications/${id}`)
       .then(setApp)
       // The round is already on screen; a stale header is not worth an error over it.
       .catch(() => {})
-  }, [id])
+    void loadRounds()
+  }, [id, loadRounds])
 
   useUnsavedChanges(selectedDirty)
 
@@ -263,11 +286,23 @@ function ApplicationWorkspace({ id }: { id: string }) {
         </div>
       </header>
 
+      <ProcessSection
+        app={app}
+        rounds={rounds}
+        onResearched={(process) => setApp((prev) => (prev ? { ...prev, process } : prev))}
+      />
+
       <InterviewsSection
         appId={app.id}
+        rounds={rounds}
         open={logging}
         onClose={() => setLogging(false)}
-        onLogged={reloadApp}
+        onLogged={(round) => {
+          // On screen before anything comes back — as a card below and as a pin on the ledger
+          // above. `reloadApp` then re-reads both the record and the list behind it.
+          setRounds((prev) => [...prev, round])
+          reloadApp()
+        }}
       />
 
       {!hasQuestions || reparsing || adding ? (

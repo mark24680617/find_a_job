@@ -1,0 +1,8 @@
+[
+  { "data": { "children": [ { "data": { "title": "Marram Systems interview experience (backend)", "selftext": "Recruiter screen, then a take-home, then a 4-round onsite.\n\nThe take-home was a small ledger service. They asked for about four hours of work over a weekend, which was roughly honest — I spent five and stopped there rather than gold-plating it.\n\nThe onsite was two coding rounds, one system design, and one behavioural with the hiring manager, all on video in a single day. Nobody asked me to invert a binary tree; every round was built on the take-home or on something from my own history.", "created_utc": 1767225600 } } ] } },
+  { "data": { "children": [
+    { "data": { "body": "Same here. The system design round was about idempotent payments. They cared much more about retries and duplicate webhooks than about drawing boxes, and the interviewer kept pushing on what happens when the ledger and the payment provider disagree about whether a charge settled.", "score": 30 } },
+    { "data": { "body": "[deleted]", "score": 2 } },
+    { "data": { "body": "How long did they give you for the take-home? Mine is this week and the recruiter said a weekend, but I would rather not lose the whole weekend to it if four hours is really the bar.", "score": 12 } }
+  ] } }
+]

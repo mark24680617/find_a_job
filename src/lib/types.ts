@@ -43,7 +43,7 @@ export interface TimelineEvent { event: string; at: string }
 export interface Application {
   id: string; company: string; role: string; jdRaw: string
   sourceUrl?: string; adapter: string
-  parsed?: ParsedJob; questions: Question[]
+  parsed?: ParsedJob; process?: ProcessMap; questions: Question[]
   status: AppStatus; timeline: TimelineEvent[]; createdAt: string
 }
 export type RoundType = 'recruiter-screen' | 'technical' | 'behavioral' | 'panel' | 'onsite' | 'other'
@@ -69,4 +69,37 @@ export interface AdminUser {
   provider: string          // 'google.com' | 'password' | anything else, verbatim; '' for none
   createdAt: string; lastSignInAt: string | null
   disabled: boolean; applications: number; facts: number
+}
+
+// ── The interview process map ────────────────────────────────────────────────────────────
+// How one company runs its loop for one role, drawn from sources we can name. Stored on the
+// application; generated on demand. Nothing in it was written without a source except what
+// is marked as inferred, and the sources themselves are never the model's to invent.
+export type StageKind =
+  | 'recruiter-screen' | 'technical' | 'system-design' | 'behavioral' | 'panel' | 'onsite'
+  | 'take-home' | 'other'
+export type StageFormat = 'call' | 'video' | 'onsite' | 'async' | 'unknown'
+export type Confidence = 'posting' | 'community' | 'inferred'
+export interface ResearchSource {
+  id: string; title: string; url: string; host: string
+  kind: 'posting' | 'company' | 'community' | 'guide'
+  snippet: string; publishedAt?: string; fetched: boolean
+}
+export interface ProcessStage {
+  order: number; name: string; kind: StageKind; format: StageFormat; duration?: string
+  whatItProbes: string; tips: string[]; sourceIds: string[]; confidence: Confidence
+}
+export interface TakeHome {
+  present: 'yes' | 'no' | 'unknown'; description: string; timeBudget?: string
+  tips: string[]; sourceIds: string[]
+}
+export interface CommunityGuide {
+  sourceId: string; takeaways: string[]; questionsReported: string[]; quotes: string[]
+  stale: boolean            // dated, and more than ~2 years before researchedAt
+  firstHand: boolean        // somebody's own account, or the company's — not a prep site's
+}
+export interface ProcessMap {
+  stages: ProcessStage[]; takeHome: TakeHome; timeline?: string
+  sources: ResearchSource[]; guides: CommunityGuide[]
+  askRecruiter: string[]; caveats: string[]; grounded: boolean; researchedAt: string
 }

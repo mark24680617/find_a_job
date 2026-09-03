@@ -51,11 +51,19 @@ async function send(
 }
 
 /**
- * `json` is only read on a 200; callers decide what a 404 means for them. Follows redirects
- * unguarded — safe only because all three callers point at fixed api.* ATS hosts, never a
- * user-supplied URL. Anything reachable from a pasted link must go through `getGuardedText`.
+ * `json` is only read on a 200; callers decide what a 404 means for them.
+ *
+ * Redirects are followed without checking each hop, which is safe only because no caller
+ * lets a stranger choose the address. The ATS adapters (`ashby`, `lever`, `greenhouse`)
+ * build theirs from a fixed `api.*` host and encode the slug and id they interpolate;
+ * `lib/research/community` builds theirs from a fixed Reddit or Algolia host and matches the
+ * one piece it takes from a search result — a thread path, an item id — against a literal
+ * shape first. The address check below is defence in depth for that invariant rather than a
+ * replacement for it: it sees only the first address, so anything reachable from a link a
+ * user pasted still belongs in `getGuardedText`, which checks every hop.
  */
 export async function getJson(url: string): Promise<{ status: number; json: unknown }> {
+  assertReachableAddress(new URL(url))
   const { status, body } = await send(url, 'application/json', 'json', 'follow')
   return { status, json: body }
 }

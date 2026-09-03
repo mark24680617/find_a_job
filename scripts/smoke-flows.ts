@@ -11,6 +11,7 @@
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts story
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts interview
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts reconcile
+ * npx tsx --env-file=.env.local scripts/smoke-flows.ts process "<company>" "<role>"
  *
  * This spends a real API call, so it is a thing you run deliberately — the unit suite
  * never touches the network. `--env-file` is what supplies GEMINI_API_KEY.
@@ -29,6 +30,7 @@ import { runInterviewInterpret } from '../src/ai/flows/interviewInterpret'
 import { runReconcileFacts } from '../src/ai/flows/reconcileFacts'
 import { runPrepBrief } from '../src/ai/flows/prepBrief'
 import { mergeStory } from '../src/lib/profileMerge'
+import { researchProcess, type GatherTrace } from '../src/lib/research/pipeline'
 import type {
   AnswerDraftOut,
   ClarifyDraftOut,
@@ -41,7 +43,7 @@ import type {
   ReconcileOut,
 } from '../src/ai/schemas'
 import { countUnits } from '../src/lib/countText'
-import type { ClarifyAnswer, Fact, ParsedJob, Profile, Question } from '../src/lib/types'
+import type { ClarifyAnswer, Fact, ParsedJob, ProcessMap, Profile, Question } from '../src/lib/types'
 
 const collapse = (s: string) => s.replace(/\s+/g, ' ').trim()
 
@@ -776,8 +778,73 @@ async function smokeReconcile(): Promise<void> {
   )
 }
 
+/**
+ * What the five searches came back with, which the finished map no longer says: the query
+ * each one ran, whether it came back at all, the observations it made, and the pages behind
+ * its grounding chunks. A URL still on `vertexaisearch.cloud.google.com` here is one whose
+ * redirect would not resolve — the link works, but nothing downstream knows its host.
+ */
+function reportGathers(traces: GatherTrace[]): void {
+  console.log(`\nqueries (${traces.length})`)
+  for (const t of traces) console.log(`  ${t.query}`)
+
+  const ok = traces.filter((t) => t.ok).length
+  console.log(`\ngathers (${ok}/${traces.length} came back)`)
+  for (const t of traces) {
+    console.log(`\n  ${t.ok ? 'ok' : 'FAILED'}: ${t.query}`)
+    for (const note of t.notes) console.log(`    - ${note}`)
+    for (const url of t.urls) console.log(`    @ ${url}`)
+  }
+}
+
+function reportProcess(map: ProcessMap, reads: { attempted: number; landed: number }): void {
+  console.log(`\nsources (${map.sources.length})`)
+  for (const s of map.sources) {
+    console.log(`  ${s.id}  ${s.host}  ${s.kind}  ${s.fetched ? 'fetched' : 'link'}  ${s.title}`)
+  }
+
+  console.log(`\nguides (${map.guides.length})`)
+  for (const g of map.guides) {
+    console.log(`\n  ${g.sourceId}${g.stale ? '  (stale)' : ''}`)
+    for (const t of g.takeaways) console.log(`    - ${t}`)
+    for (const q of g.questionsReported) console.log(`    ? ${q}`)
+    for (const q of g.quotes) console.log(`    " ${q}`)
+  }
+
+  // The two numbers that say whether the guides channel worked: how far down the ranked list
+  // the run had to go, and how much of it came back as something to digest.
+  console.log(`\nreads attempted: ${reads.attempted}, digests landed: ${reads.landed}`)
+
+  console.log('\n\n=== the map ===')
+  console.log(JSON.stringify(map, null, 2))
+}
+
+/**
+ * The whole research pipeline, for a company and a role named on the command line — the same
+ * function the route runs, with a posting it never had. This one is expensive twice over: six
+ * or more model calls, and a dozen live reads of Reddit, Hacker News and whatever the searches
+ * turned up. Run it deliberately, and read what it prints against what the map claims.
+ */
+async function smokeProcess(company: string, role: string): Promise<void> {
+  console.log(`process: ${company} — ${role}`)
+  // The posting the route would have parsed, reduced to the two fields the research uses. The
+  // rest is empty on purpose: this is the map a person gets before anyone has read the JD.
+  const parsed: ParsedJob = {
+    company, role, roleFacts: [], gates: [], themes: [], scope: 'per-application', advisory: '',
+  }
+  let reads = { attempted: 0, landed: 0 }
+  const map = await researchProcess({
+    company, role, jdRaw: '', parsed,
+    onGathers: reportGathers,
+    onReads: (counts) => { reads = counts },
+  })
+  reportProcess(map, reads)
+}
+
 async function main(): Promise<void> {
-  const [flow, file] = process.argv.slice(2)
+  // The second positional is a file for `profileIngest` and a mode for `formParse`; the
+  // `process` mode reads it as the company, and takes the role from a third.
+  const [flow, file, role] = process.argv.slice(2)
   if (flow === 'profileIngest' && file) return smokeProfileIngest(file)
   if (flow === 'jobInterpret') return smokeJobInterpret()
   if (flow === 'formParse' && (file === 'text' || file === 'image')) return smokeFormParse(file)
@@ -787,11 +854,12 @@ async function main(): Promise<void> {
   if (flow === 'story') return smokeStory()
   if (flow === 'interview') return smokeInterview()
   if (flow === 'reconcile') return smokeReconcile()
+  if (flow === 'process' && file && role) return smokeProcess(file, role)
 
   console.error(
     'usage: tsx scripts/smoke-flows.ts profileIngest <file> | jobInterpret |' +
       ' formParse text|image | answerDraft | clarifyDraft | feedbackDistill | story |' +
-      ' interview | reconcile',
+      ' interview | reconcile | process "<company>" "<role>"',
   )
   process.exitCode = 1
 }

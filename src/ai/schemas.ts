@@ -230,3 +230,52 @@ export type SchemaGuards = [
   Assert<Mutual<InterviewInterpretOut['askHuman'][number], Question['askHuman'][number]>>,
   Assert<Mutual<PrepBriefOut, PrepBrief>>,
 ]
+
+/**
+ * processDigest: one write-up in, what a candidate should take from it out. Quotes are
+ * verified in code afterwards; the schema only bounds the counts.
+ */
+export const ProcessDigestOutSchema = z.object({
+  takeaways: z.array(z.string()).max(5),
+  questionsReported: z.array(z.string()).max(12),
+  quotes: z.array(z.string()).max(3),
+  publishedAt: z.string().nullable(),
+  firstHand: z.boolean(),
+})
+export type ProcessDigestOut = z.infer<typeof ProcessDigestOutSchema>
+
+const stageKind = z.enum(['recruiter-screen', 'technical', 'system-design', 'behavioral', 'panel', 'onsite', 'take-home', 'other'])
+const stageFormat = z.enum(['call', 'video', 'onsite', 'async', 'unknown'])
+const confidence = z.enum(['posting', 'community', 'inferred'])
+
+/**
+ * processSynthesize: the loop, from the evidence. Nullable rather than optional for the
+ * fields the model may leave out — Gemini's structured output handles `null` and not absence.
+ * The guard in `src/lib/research/guard.ts` enforces what the schema cannot say.
+ */
+export const ProcessSynthesizeOutSchema = z.object({
+  stages: z.array(
+    z.object({
+      order: z.number().int(),
+      name: z.string().min(1),
+      kind: stageKind,
+      format: stageFormat,
+      duration: z.string().nullable(),
+      whatItProbes: z.string(),
+      tips: z.array(z.string()),
+      sourceIds: z.array(z.string()),
+      confidence,
+    }),
+  ),
+  takeHome: z.object({
+    present: z.enum(['yes', 'no', 'unknown']),
+    description: z.string(),
+    timeBudget: z.string().nullable(),
+    tips: z.array(z.string()),
+    sourceIds: z.array(z.string()),
+  }),
+  timeline: z.string().nullable(),
+  askRecruiter: z.array(z.string()),
+  caveats: z.array(z.string()),
+})
+export type ProcessSynthesizeOut = z.infer<typeof ProcessSynthesizeOutSchema>

@@ -1,0 +1,11 @@
+{ "hits": [
+  { "title": "How I interviewed at Marram Systems", "url": "https://blog.example.com/marram-interview", "objectID": "39000000", "created_at": "2026-02-14T09:00:00.000Z", "points": 240, "num_comments": 0 },
+  { "title": "Ask HN: Interviewing at Marram Systems?", "url": null, "objectID": "39000001", "created_at": "2025-11-02T10:00:00.000Z", "points": 12, "num_comments": 8 },
+  { "title": "Ask HN: Anyone interview at Marram Systems lately?", "url": null, "objectID": "39000003", "created_at": "2025-12-02T10:00:00.000Z", "points": 2, "num_comments": 1 },
+  { "title": "Co-Founder of Marram Systems Interviewed in Depth (Audio)", "url": "https://podcast.example.com/marram", "objectID": "39000004", "created_at": "2024-03-02T10:00:00.000Z", "points": 60, "num_comments": 15 },
+  { "title": "Marram Systems raises Series B", "url": "https://techcrunch.com/marram", "objectID": "39000002", "created_at": "2025-05-02T10:00:00.000Z", "points": 90, "num_comments": 40 },
+  { "title": "Show HN: Interview prep for Marram Systems", "url": "https://prep.example.com/marram", "objectID": "39000005", "created_at": "2026-01-05T10:00:00.000Z", "points": 30, "num_comments": 12 },
+  { "title": "Marram Systems interview simulator", "url": "https://marram-sim.vercel.app/", "objectID": "39000006", "created_at": "2026-02-01T10:00:00.000Z", "points": 18, "num_comments": 4 },
+  { "title": "Marram Systems interview loop, explained [video]", "url": "https://www.youtube.com/watch?v=abc123", "objectID": "39000007", "created_at": "2026-03-01T10:00:00.000Z", "points": 22, "num_comments": 6 },
+  { "title": "My Marram Systems interview, start to finish", "url": "https://someone.github.io/marram-interview", "objectID": "39000008", "created_at": "2026-04-01T10:00:00.000Z", "points": 44, "num_comments": 9 }
+] }
