@@ -14,8 +14,13 @@ import { authMessage } from '@/lib/authMessage'
 
 const TAGLINE = 'Your story is unique. AI helps you tell it — it doesn’t replace it.'
 
-export function SignInGate() {
-  const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
+interface Props {
+  /** Which half of the wall to open on — /sign-in?mode=sign-up lands on the sign-up half. */
+  initialMode?: 'sign-in' | 'sign-up'
+}
+
+export function SignInGate({ initialMode = 'sign-in' }: Props) {
+  const [mode, setMode] = useState<'sign-in' | 'sign-up'>(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState<'google' | 'email' | null>(null)

@@ -301,6 +301,81 @@
       transform: translateX(420%);
     }
   }
+
+  /*
+   * The landing page's motion — two rules, both opacity and transform only. `rise` is the one
+   * staggered entrance on load (each child sets --i); `reveal` fades a plate in the first time
+   * it scrolls into view, and stays put once it has. Both are off for anyone who asked for less
+   * motion, and a plate the observer never reaches is simply visible.
+   */
+  .rise {
+    animation: rise 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .reveal {
+    transition:
+      opacity 560ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .reveal[data-reveal='pending'] {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  /* A native disclosure with its own mark: the browser's triangle is replaced by a chevron
+     drawn from two borders, so it matches the rules of the list it sits in. */
+  .faq summary {
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .faq summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq summary::after {
+    content: '';
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-left: var(--space-sm);
+    border-right: 1px solid var(--ink-3);
+    border-bottom: 1px solid var(--ink-3);
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .faq details[open] summary::after {
+    transform: translateY(2px) rotate(225deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rise {
+      animation: none;
+    }
+    .reveal,
+    .reveal[data-reveal='pending'] {
+      transition: none;
+      opacity: 1;
+      transform: none;
+    }
+    .faq summary::after {
+      transition: none;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

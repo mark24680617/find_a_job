@@ -19,8 +19,17 @@ const publicSans = Public_Sans({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://find-a-job-572064776552.us-west1.run.app'),
   title: 'Find a Job',
   description: 'Your story is unique. AI helps you tell it — it doesn’t replace it.',
+  openGraph: {
+    title: 'Find a Job',
+    description:
+      'An open-source job-application agent that writes every answer out of your own facts, cites each one, and asks instead of inventing.',
+    type: 'website',
+    images: ['/landing/og.jpg'],
+  },
+  twitter: { card: 'summary_large_image' },
 }
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {

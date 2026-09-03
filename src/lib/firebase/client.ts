@@ -17,6 +17,7 @@ import {
   verifyBeforeUpdateEmail,
   type User,
 } from 'firebase/auth'
+import { SIGNED_IN_COOKIE } from '@/lib/landing/firstPaint'
 import { hasPasswordProvider } from '@/lib/providers'
 
 const app = getApps().length
@@ -46,9 +47,31 @@ export function signOutUser() {
   return signOut(auth)
 }
 
+/**
+ * Leave a note for the server: this browser has a session here. Read by `/` and `/sign-in`
+ * to choose what to paint before Firebase has restored the session — the landing for a new
+ * visitor, the checking line for a returning one. Not an authorisation: the server renders a
+ * placeholder from it and nothing else, and every real request still carries the ID token —
+ * and it is marked `Secure` wherever the page was served over https, which is everywhere but
+ * a developer's own machine.
+ */
+function rememberSignedIn(has: boolean) {
+  try {
+    const secure = location.protocol === 'https:' ? '; Secure' : ''
+    document.cookie = has
+      ? `${SIGNED_IN_COOKIE}=1; path=/; max-age=31536000; SameSite=Lax${secure}`
+      : `${SIGNED_IN_COOKIE}=; path=/; max-age=0; SameSite=Lax${secure}`
+  } catch {
+    // A browser that refuses cookies gets the landing every time, which is the safe way to be wrong.
+  }
+}
+
 /** Subscribes to sign-in state. Returns the unsubscribe function. */
 export function watchUser(cb: (user: User | null) => void) {
-  return onAuthStateChanged(auth, cb)
+  return onAuthStateChanged(auth, (user) => {
+    rememberSignedIn(user !== null)
+    cb(user)
+  })
 }
 
 /**

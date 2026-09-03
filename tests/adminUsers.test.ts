@@ -96,11 +96,11 @@ describe('sortByLastSignIn', () => {
 
 describe('filterUsers', () => {
   const rows = [
-    user({ uid: 'a', email: 'mark@luqlabs.com', displayName: 'Mark Qiu' }),
+    user({ uid: 'a', email: 'ines.okonkwo@northwind.test', displayName: 'Inés Okonkwo' }),
     user({ uid: 'b', email: 'tom@example.com', displayName: '' }),
   ]
   it('matches email or name, case-insensitively, trimmed', () => {
-    expect(filterUsers(rows, '  QIU ').map((u) => u.uid)).toEqual(['a'])
+    expect(filterUsers(rows, '  OKONKWO ').map((u) => u.uid)).toEqual(['a'])
     expect(filterUsers(rows, 'example').map((u) => u.uid)).toEqual(['b'])
   })
   it('returns everything for a blank query', () => {

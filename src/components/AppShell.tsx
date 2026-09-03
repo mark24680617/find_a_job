@@ -6,6 +6,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { User } from 'firebase/auth'
 import { SignInGate } from '@/components/SignInGate'
 import { readAdminClaim, signOutUser, watchUser } from '@/lib/firebase/client'
+import { firstPaint } from '@/lib/landing/firstPaint'
 
 /**
  * The frame every page sits in, and the only place in the app that subscribes to Firebase's
@@ -64,7 +65,18 @@ export function useUnsavedChanges(unsaved: boolean): void {
   }, [unsaved, report])
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+interface Props {
+  children: ReactNode
+  /**
+   * What a signed-out visitor sees on this page instead of the sign-in wall. The root page
+   * passes the landing; every other page passes nothing and keeps the wall.
+   */
+  signedOut?: ReactNode
+  /** The server's read of the sign-in cookie: this browser has had a session here before. */
+  returning?: boolean
+}
+
+export function AppShell({ children, signedOut, returning = false }: Props) {
   const [user, setUser] = useState<User | null>(null)
   const [ready, setReady] = useState(false)
   const [unsaved, setUnsaved] = useState(false)
@@ -96,17 +108,21 @@ export function AppShell({ children }: { children: ReactNode }) {
   const mayLeave = () =>
     !unsaved || window.confirm('Leave this page? Your unsaved edits will be lost.')
 
-  // Firebase restores the persisted session from IndexedDB asynchronously. Showing the gate
-  // during that gap would flash a sign-in form at somebody who is already signed in.
-  if (!ready) {
+  // Firebase restores the persisted session from IndexedDB asynchronously. What to show in
+  // that gap is decided once, in `firstPaint`: the slot at once for a visitor with no session
+  // here, the checking line for one who has — never a sign-in form flashed at somebody who is
+  // already signed in, and never a wait for somebody who has nothing to wait for.
+  const paint = firstPaint(ready, user !== null, returning, signedOut !== undefined)
+  if (paint === 'checking') {
     return (
       <main className="flex flex-1 items-center justify-center px-6" aria-busy="true">
         <p className="text-sm text-ink-3">Checking your session…</p>
       </main>
     )
   }
-
-  if (!user) return <SignInGate />
+  if (paint === 'gate') return <>{signedOut ?? <SignInGate />}</>
+  // unreachable: 'app' is only returned with a user; this keeps the type honest.
+  if (!user) return null
 
   return (
     <UserContext.Provider value={user}>
