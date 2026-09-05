@@ -202,3 +202,20 @@ describe('ReconcilePanel — the wait', () => {
     expect(markup()).not.toContain('<fieldset disabled')
   })
 })
+
+describe('ReconcilePanel — where it is mounted', () => {
+  it('takes an h3, so it can sit under a page that already has h2s', () => {
+    // The round page mounts it inside its own section; an h2 there would break the outline.
+    const html = markup({ headingLevel: 'h3' })
+    expect(html).toContain('<h3 id="reconcile-heading"')
+    expect(html).toContain('tabindex="-1"')
+    expect(html).not.toContain('<h2 id="reconcile-heading"')
+  })
+
+  it('is an h2 by default, which is how the profile page has always had it', () => {
+    const html = markup()
+    expect(html).toContain('<h2 id="reconcile-heading"')
+    // Focusable either way: opening the panel moves focus to its title.
+    expect(html).toContain('tabindex="-1"')
+  })
+})

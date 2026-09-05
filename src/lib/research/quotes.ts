@@ -9,7 +9,8 @@ export function normalizeWs(s: string): string {
   return s.replace(/\s+/g, ' ').trim()
 }
 
-const QUOTE_CAP = 240
+/** The longest a quote may be. Exported because the mock's debrief guard holds the same line. */
+export const QUOTE_CAP = 240
 
 export function verifyQuotes(quotes: string[], text: string): string[] {
   const haystack = normalizeWs(text)

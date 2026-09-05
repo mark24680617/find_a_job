@@ -18,6 +18,8 @@ import type {
   FactAdd,
   FactSkip,
   FactUpdate,
+  MockDebrief,
+  MockTurn,
   ParsedJob,
   PrepBrief,
   Profile,
@@ -35,6 +37,7 @@ const ArtifactScopeSchema = z.enum(['per-application', 'per-profile', 'unknown']
 const RoundTypeSchema = z.enum([
   'recruiter-screen',
   'technical',
+  'system-design',
   'behavioral',
   'panel',
   'onsite',
@@ -182,10 +185,49 @@ export const InterviewInterpretOutSchema = z.object({
 /** prepBrief: role + profile in, the interview prep brief out. */
 export const PrepBriefOutSchema = z.object({
   likelyTopics: z.array(z.string()),
-  questionsToPrepare: z.array(z.object({ q: z.string(), angle: z.string() })),
+  // sourceId is nullable rather than optional, for the same reason `datetime` is one schema
+  // up: a question the model wrote itself has to SAY it has no source, or an omission and an
+  // honest "nobody reported this" look alike and there is nothing left to check. The stored
+  // brief keeps the field optional, so the route strips the null to absent before it writes.
+  questionsToPrepare: z.array(
+    z.object({ q: z.string(), angle: z.string(), sourceId: z.string().nullable() }),
+  ),
   questionsToAsk: z.array(z.string()),
   factsToRehearse: z.array(z.string()),
   redFlags: z.array(z.string()),
+})
+
+/**
+ * mockTurn: the interviewer's next line. `sourceId` is nullable rather than optional for the
+ * reason `datetime` is: a turn that asks nobody's reported question has to say so, and absence
+ * would be indistinguishable from the model forgetting the field. `closing` is not in the enum
+ * — the closing line is written in code when the sixth answer lands, so the model is never in
+ * a position to end the mock early or to end it in its own words.
+ */
+export const MockTurnOutSchema = z.object({
+  say: z.string().min(1),
+  sourceId: z.string().nullable(),
+  kind: z.enum(['question', 'follow-up']),
+})
+
+/**
+ * mockDebrief: what landed, where the answer stayed general, and every sentence the candidate
+ * said about themselves that their facts do not support. `factsChecked` is missing on purpose:
+ * how many facts the bank held is the route's to count, not the model's to claim — and the
+ * screen reads it to decide whether the amber means anything at all.
+ */
+export const MockDebriefOutSchema = z.object({
+  overall: z.string(),
+  answers: z.array(
+    z.object({
+      question: z.string(),
+      landed: z.array(z.string()),
+      vague: z.array(z.string()),
+      unsupported: z.array(z.object({ said: z.string(), why: z.string() })),
+    }),
+  ),
+  code: z.object({ strengths: z.array(z.string()), gaps: z.array(z.string()) }).nullable(),
+  rehearse: z.array(z.string()),
 })
 
 export type ProfileIngestOut = z.infer<typeof ProfileIngestOutSchema>
@@ -197,6 +239,8 @@ export type ReconcileOut = z.infer<typeof ReconcileOutSchema>
 export type FeedbackDistillOut = z.infer<typeof FeedbackDistillOutSchema>
 export type InterviewInterpretOut = z.infer<typeof InterviewInterpretOutSchema>
 export type PrepBriefOut = z.infer<typeof PrepBriefOutSchema>
+export type MockTurnOut = z.infer<typeof MockTurnOutSchema>
+export type MockDebriefOut = z.infer<typeof MockDebriefOutSchema>
 
 /** `true` only when the two types are assignable in both directions. */
 type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
@@ -228,7 +272,20 @@ export type SchemaGuards = [
   Assert<Mutual<FeedbackDistillOut['rules'][number], Omit<VoiceRule, 'createdAt'>>>,
   Assert<Mutual<InterviewInterpretOut['roundType'], RoundType>>,
   Assert<Mutual<InterviewInterpretOut['askHuman'][number], Question['askHuman'][number]>>,
-  Assert<Mutual<PrepBriefOut, PrepBrief>>,
+  // PrepBriefOut and PrepBrief have stopped being one shape, so the guard splits rather than
+  // being dropped: `basis` is the route's to write and never the model's, and the output's
+  // sourceId is nullable where the stored one is optional. Everything else stays pinned in
+  // both directions — only the one field that genuinely differs is relaxed, and it is named.
+  Assert<Mutual<Omit<PrepBriefOut, 'questionsToPrepare'>, Omit<PrepBrief, 'questionsToPrepare' | 'basis'>>>,
+  Assert<
+    Mutual<
+      PrepBriefOut['questionsToPrepare'][number],
+      Omit<PrepBrief['questionsToPrepare'][number], 'sourceId'> & { sourceId: string | null }
+    >
+  >,
+  Assert<Mutual<MockTurnOut['kind'], Exclude<NonNullable<MockTurn['kind']>, 'closing'>>>,
+  Assert<Mutual<Omit<MockDebriefOut, 'code'>, Omit<MockDebrief, 'code' | 'factsChecked'>>>,
+  Assert<Mutual<NonNullable<MockDebriefOut['code']>, NonNullable<MockDebrief['code']>>>,
 ]
 
 /**

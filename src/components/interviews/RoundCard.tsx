@@ -6,7 +6,7 @@ import { BriefView } from '@/components/interviews/BriefView'
 import { apiDownload } from '@/lib/apiFetch'
 import { readable } from '@/lib/readable'
 import { formatWhen, ROUND_LABEL } from '@/lib/rounds'
-import type { InterviewRound } from '@/lib/types'
+import type { InterviewRound, ResearchSource } from '@/lib/types'
 
 /**
  * One logged round: what kind it is, when, who is on it — and the brief written for it.
@@ -25,9 +25,11 @@ interface Props {
   round: InterviewRound
   /** True only for a round logged just now whose brief the model could not write. */
   briefFailed?: boolean
+  /** The map's sources, so a brief's cited question can name the guide that reported it. */
+  sources?: ResearchSource[]
 }
 
-export function RoundCard({ appId, round, briefFailed = false }: Props) {
+export function RoundCard({ appId, round, briefFailed = false, sources }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -116,7 +118,7 @@ export function RoundCard({ appId, round, briefFailed = false }: Props) {
       )}
 
       {round.prepBrief ? (
-        <BriefView brief={round.prepBrief} />
+        <BriefView brief={round.prepBrief} sources={sources} />
       ) : (
         briefFailed && (
           <p className="mt-4 max-w-[62ch] text-sm text-ink-3">

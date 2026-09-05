@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { NoticeIntake } from '@/components/interviews/NoticeIntake'
 import { RoundCard } from '@/components/interviews/RoundCard'
-import type { InterviewRound } from '@/lib/types'
+import type { InterviewRound, ResearchSource } from '@/lib/types'
 
 /**
  * The rounds logged under one application, and the place to add another.
@@ -21,6 +21,12 @@ import type { InterviewRound } from '@/lib/types'
 interface Props {
   appId: string
   rounds: InterviewRound[]
+  /**
+   * The map's sources, straight through to each card's brief. The section holds no copy of the
+   * map for the same reason it holds no copy of the rounds: the page owns both, and two copies
+   * of the same research would drift the moment it was run again.
+   */
+  sources?: ResearchSource[]
   /** Whether the paste-a-notice panel is open. Owned by the page — the button is in its header. */
   open: boolean
   onClose: () => void
@@ -31,7 +37,7 @@ interface Props {
   onLogged: (round: InterviewRound) => void
 }
 
-export function InterviewsSection({ appId, rounds, open, onClose, onLogged }: Props) {
+export function InterviewsSection({ appId, rounds, sources, open, onClose, onLogged }: Props) {
   // The round logged just now whose brief the model could not write. Held by id, so the note
   // sits on that card alone and an older round without a brief stays quiet about it.
   const [briefFailedFor, setBriefFailedFor] = useState('')
@@ -53,6 +59,7 @@ export function InterviewsSection({ appId, rounds, open, onClose, onLogged }: Pr
             appId={appId}
             round={round}
             briefFailed={round.id === briefFailedFor}
+            sources={sources}
           />
         ))}
 

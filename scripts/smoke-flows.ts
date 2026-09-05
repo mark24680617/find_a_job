@@ -12,6 +12,8 @@
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts interview
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts reconcile
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts process "<company>" "<role>"
+ * npx tsx --env-file=.env.local scripts/smoke-flows.ts brief <process-transcript.txt> [stageOrder]
+ * npx tsx --env-file=.env.local scripts/smoke-flows.ts mock <process-transcript.txt> [stageOrder]
  *
  * This spends a real API call, so it is a thing you run deliberately — the unit suite
  * never touches the network. `--env-file` is what supplies GEMINI_API_KEY.
@@ -29,8 +31,20 @@ import { runFeedbackDistill } from '../src/ai/flows/feedbackDistill'
 import { runInterviewInterpret } from '../src/ai/flows/interviewInterpret'
 import { runReconcileFacts } from '../src/ai/flows/reconcileFacts'
 import { runPrepBrief } from '../src/ai/flows/prepBrief'
+import { runMockTurn } from '../src/ai/flows/mockTurn'
+import { runMockDebrief } from '../src/ai/flows/mockDebrief'
+import { describeStage } from '../src/ai/prompts/mockTurn'
 import { mergeStory } from '../src/lib/profileMerge'
 import { researchProcess, type GatherTrace } from '../src/lib/research/pipeline'
+import {
+  placeRound,
+  practiceMode,
+  reportedQuestions,
+  type ReportedQuestion,
+  type StagePlacement,
+} from '../src/lib/practice'
+import { normalizeWs } from '../src/lib/research/quotes'
+import { roleFamily } from '../src/lib/research/roleFamily'
 import type {
   AnswerDraftOut,
   ClarifyDraftOut,
@@ -38,12 +52,26 @@ import type {
   FormParseOut,
   InterviewInterpretOut,
   JobInterpretOut,
-  PrepBriefOut,
+  MockDebriefOut,
+  MockTurnOut,
   ProfileIngestOut,
   ReconcileOut,
 } from '../src/ai/schemas'
 import { countUnits } from '../src/lib/countText'
-import type { ClarifyAnswer, Fact, ParsedJob, ProcessMap, Profile, Question } from '../src/lib/types'
+import type {
+  ClarifyAnswer,
+  Fact,
+  InterviewRound,
+  MockTurn,
+  ParsedJob,
+  PracticeMode,
+  PrepBrief,
+  ProcessMap,
+  ProcessStage,
+  Profile,
+  Question,
+  RoundType,
+} from '../src/lib/types'
 
 const collapse = (s: string) => s.replace(/\s+/g, ' ').trim()
 
@@ -620,14 +648,41 @@ function reportInterview(out: InterviewInterpretOut): void {
  * The brief's own claim, checked: five sections, none of them empty, and every angle and
  * rehearsal line traceable to a fact that was actually provided. An angle naming no fact id is
  * the failure this prompt is written to prevent — a brief that invents an experience for the
- * candidate to tell is worse than no brief.
+ * candidate to tell is worse than no brief. A citation is the second such claim: `citeReported`
+ * has already dropped anything that did not check out, so the two citation lines below are the
+ * guard's receipt — a NOT here means the guard did not run, not that the model misbehaved.
  */
-function reportBrief(out: PrepBriefOut, facts: Fact[]): void {
+function reportBrief(
+  out: Omit<PrepBrief, 'basis'>,
+  facts: Fact[],
+  reported: ReportedQuestion[] = [],
+): void {
   console.log(`\nlikelyTopics (${out.likelyTopics.length})`)
   for (const t of out.likelyTopics) console.log(`  - ${t}`)
 
   console.log(`\nquestionsToPrepare (${out.questionsToPrepare.length})`)
-  for (const { q, angle } of out.questionsToPrepare) console.log(`  ${q}\n      angle: ${angle}`)
+  let cited = 0
+  let wordForWord = 0
+  for (const { q, angle, sourceId } of out.questionsToPrepare) {
+    console.log(`  ${q}`)
+    if (sourceId) {
+      cited += 1
+      // The reported list is the only place a legal sourceId can come from, so it answers both
+      // questions at once: who reported it, and whether this is their question or a rewrite.
+      const source = reported.find((r) => r.sourceId === sourceId)
+      const asked = reported.some(
+        (r) => r.sourceId === sourceId && normalizeWs(r.text) === normalizeWs(q),
+      )
+      if (asked) wordForWord += 1
+      console.log(
+        source
+          ? `      reported by ${source.host} — ${source.url}`
+          : `      reported by ${sourceId} — NOT A SOURCE WE HANDED OVER`,
+      )
+      if (!asked) console.log('      NOT WORD FOR WORD A QUESTION THAT SOURCE REPORTED')
+    }
+    console.log(`      angle: ${angle}`)
+  }
 
   console.log(`\nquestionsToAsk (${out.questionsToAsk.length})`)
   for (const q of out.questionsToAsk) console.log(`  - ${q}`)
@@ -658,6 +713,8 @@ function reportBrief(out: PrepBriefOut, facts: Fact[]): void {
   console.log('\nchecks')
   console.log(`  all five sections populated: ${populated === 5 ? 'ok' : `${populated}/5`}`)
   console.log(`  rehearsal lines quoted from the provided claims: ${verbatim}/${out.factsToRehearse.length}`)
+  console.log(`  questions cited to a guide: ${cited}/${out.questionsToPrepare.length} (of ${reported.length} reported)`)
+  console.log(`  citations that are that guide's own question, word for word: ${wordForWord}/${cited}`)
   // Informational, not a verdict: the prompt asks for a fact CLUSTER, not an id, and a good
   // angle usually names the claim in words ("the payments service at 99.95%") rather than "f2".
   console.log(`  angles naming a fact id outright: ${angled.length}/${out.questionsToPrepare.length} (informational)`)
@@ -841,9 +898,337 @@ async function smokeProcess(company: string, role: string): Promise<void> {
   reportProcess(map, reads)
 }
 
+
+// ---- brief & mock: a real researched stage, practised ------------------------------------
+// Both modes read one of the saved `process` transcripts under
+// docs/superpowers/smoke/2026-09-03-process-map/ rather than researching again: that run cost
+// six model calls and a dozen live fetches, and the map it produced is the input these two
+// flows were designed against. The candidate is TOM_FACTS — the same eight fictional claims
+// the interview smoke uses, chosen because they carry numbers and dates a debrief can actually
+// check an answer against, and because none of the three postings is his. A fact bank that does
+// not fit the role is the ordinary case, and it is what makes the amber items worth reading.
+
+/** What both modes need out of a saved transcript, worked out once. */
+interface SmokeRound {
+  company: string
+  role: string
+  map: ProcessMap
+  parsed: ParsedJob
+  stage: ProcessStage
+  placement: StagePlacement
+  roundType: RoundType
+  mode: PracticeMode
+}
+
+/**
+ * Reads a saved process run and stands a round up on one of its stages. The transcript's first
+ * line is `process: {company} — {role}` and its map is the JSON after the `=== the map ===`
+ * line; nothing else in the file matters here.
+ */
+function setUpRound(file: string, stageOrder: number): SmokeRound {
+  const text = readFileSync(file, 'utf8')
+  // Lazy on the company so a role containing an em dash still lands in the second group; a
+  // company containing one would not, and there is no such company in the three saved runs.
+  const header = /^process:\s*(.+?)\s+—\s+(.+)$/.exec(text.split('\n', 1)[0].trim())
+  if (!header) throw new Error(`${file}: the first line is not "process: {company} — {role}"`)
+  const marker = text.indexOf('=== the map ===')
+  if (marker < 0) throw new Error(`${file}: there is no "=== the map ===" line`)
+  // Our own output, read back: a cast rather than a validator, because the only thing that
+  // writes this file is smokeProcess above, and a file that is not one fails on the first field.
+  const map = JSON.parse(text.slice(text.indexOf('{', marker))) as ProcessMap
+
+  const [, company, role] = header
+  const stage = map.stages.find((s) => s.order === stageOrder)
+  if (!stage) throw new Error(`${file}: no stage ${stageOrder} — the map has ${map.stages.length}`)
+  // A take-home is a stage but not a round type: there is no notice to log for it, and the
+  // product would never place a round there. Refused rather than typed 'other' quietly.
+  if (stage.kind === 'take-home') {
+    throw new Error(`stage ${stageOrder} is the take-home — no round is ever of that kind`)
+  }
+  const roundType: RoundType = stage.kind
+
+  // The posting the route would have parsed, reduced to the two fields the practice reads —
+  // the same minimal ParsedJob smokeProcess builds, for the same reason.
+  const parsed: ParsedJob = {
+    company, role, roleFacts: [], gates: [], themes: [], scope: 'per-application', advisory: '',
+  }
+
+  // A round claims the FIRST unclaimed stage of its kind, which is how the product behaves: the
+  // third coding round is the third coding stage. So practising stage 4 of a loop with three
+  // technical stages before it means logging those three first — otherwise `stageOrder 4` would
+  // quietly hand back stage 2 and the run would be filed under a stage it never used.
+  const before = map.stages.filter((s) => s.kind === stage.kind && s.order < stage.order).length
+  const rounds: InterviewRound[] = Array.from({ length: before + 1 }, (_, i) => ({
+    id: `r${i + 1}`,
+    noticeRaw: '',
+    roundType,
+    people: [],
+    chat: [],
+    createdAt: new Date(Date.UTC(2026, 0, i + 1)).toISOString(),
+  }))
+  const placement = placeRound(rounds[rounds.length - 1], rounds, map)
+  if (!placement || placement.stage.order !== stage.order) {
+    throw new Error(
+      `the round landed on ${placement ? `stage ${placement.stage.order}` : 'no stage'}, not ${stageOrder}`,
+    )
+  }
+
+  return {
+    company, role, map, parsed, stage, placement, roundType,
+    mode: practiceMode(stage.kind, roleFamily(role)),
+  }
+}
+
+// The two sentences the mock is built around. One is TOM_FACTS f3 word for word, bar the leading
+// capital, so it can be dropped into a sentence the candidate is speaking; the other is nowhere
+// in the bank. That makes the debrief's only claim about the candidate testable from outside:
+// these sentences, and no others, are ones only they can vouch for. The check that reads them is
+// case-insensitive for exactly this reason.
+const HELD_CLAIM = 'cut p99 checkout latency from 840ms to 210ms by batching ledger writes'
+const PLANTED_CLAIM =
+  'I ran the on-call rotation for a forty-engineer payments org and cut incident volume by 40% in a quarter.'
+
+// Prose for a conversation or a design stage: an answer that leans on the bank, then one that
+// walks off it. Fixed, not generated — a smoke whose input changes between runs compares nothing.
+const PROSE_ANSWERS = [
+  `At Northwind I owned the payments service — 12,000 requests a day at 99.95% success. The change
+I would point at is latency: I ${HELD_CLAIM}, after a week in the traces establishing that the
+ledger write, not the gateway, was the tail.`,
+  `On the organisational side, ${PLANTED_CLAIM} The habit I would bring here is writing the
+runbook before the launch rather than after the first page.`,
+]
+
+// The same two answers for a coding stage, with the code the box would hold. No backticks: this
+// is a TypeScript template literal, and a Go raw string would end it.
+const CODING_ANSWERS = [
+  `Assumptions: one charge per idempotency key, the gateway delivers at least once, ledger rows
+are append-only.
+
+func ApplyCharge(ctx context.Context, tx *sql.Tx, key string, cents int64) error {
+  var seen bool
+  err := tx.QueryRowContext(ctx, "select exists(select 1 from charges where idem_key=$1)", key).Scan(&seen)
+  if err != nil {
+    return err
+  }
+  if seen {
+    return nil
+  }
+  if _, err := tx.ExecContext(ctx, "insert into charges (idem_key, cents) values ($1, $2)", key, cents); err != nil {
+    return err
+  }
+  return appendLedger(ctx, tx, key, cents)
+}
+
+I have written this shape before: I ${HELD_CLAIM}, so appendLedger here would buffer and flush
+rather than write once per charge.`,
+  `For the added constraint I would take the idempotency key as the partition key and hold the
+flush window at 20ms, so a retry lands in the same batch as the original and the ledger stays
+single-writer per key.
+
+${PLANTED_CLAIM} Most of that was making retries idempotent exactly like this.`,
+]
+
+/**
+ * Two-way, case-insensitive containment: a debrief may quote the whole sentence or the clause
+ * inside it, and a candidate writes "I cut p99…" where the fact reads "Cut p99…". This is the
+ * smoke's own judgment, not the guard's — guardDebrief's substring test is case-sensitive and
+ * is checked separately below. Only the planted claim uses this, where a hit either direction is
+ * the right answer; for the held claim the direction is the whole question, so it is tested there.
+ */
+const overlaps = (a: string, b: string): boolean => {
+  const x = normalizeWs(a).toLowerCase()
+  const y = normalizeWs(b).toLowerCase()
+  return x.includes(y) || y.includes(x)
+}
+
+/** A model turn as the route stores it: `sourceId` omitted rather than written as undefined. */
+const asTurn = (out: MockTurnOut): MockTurn => ({
+  role: 'model',
+  text: out.say,
+  kind: out.kind,
+  ...(out.sourceId ? { sourceId: out.sourceId } : {}),
+  at: new Date().toISOString(),
+})
+
+/**
+ * The session as the round page would show it, then the debrief with its amber items marked —
+ * amber being the one thing on that page only the candidate can settle. The checks at the end
+ * are the two the planted sentences make possible: the claim the bank does not hold has to be
+ * flagged, and the claim it does hold must not be.
+ */
+function reportMock(
+  transcript: MockTurn[],
+  debrief: MockDebriefOut,
+  mode: PracticeMode,
+  facts: Fact[],
+  reported: ReportedQuestion[],
+): void {
+  console.log(`\ntranscript (${transcript.length} turns)`)
+  for (const turn of transcript) {
+    if (turn.role === 'model') {
+      const source = turn.sourceId ? reported.find((r) => r.sourceId === turn.sourceId) : undefined
+      const cite = turn.sourceId
+        ? source
+          ? `  · reported by ${source.host} (${turn.sourceId})`
+          : `  · cites ${turn.sourceId} — NOT A SOURCE WE HANDED OVER`
+        : ''
+      console.log(`\n  Interviewer (${turn.kind ?? 'unlabelled'})${cite}`)
+    } else {
+      console.log('\n  You')
+    }
+    for (const line of turn.text.split('\n')) console.log(`      ${line}`)
+  }
+
+  console.log('\n\ndebrief')
+  console.log(`\n  overall\n      ${debrief.overall}`)
+
+  let amber = 0
+  debrief.answers.forEach((answer, i) => {
+    console.log(`\n  answer ${i + 1}: ${answer.question}`)
+    for (const l of answer.landed) console.log(`      landed: ${l}`)
+    for (const v of answer.vague) console.log(`      vague:  ${v}`)
+    for (const u of answer.unsupported) {
+      amber += 1
+      console.log(`      AMBER:  ${JSON.stringify(u.said)}`)
+      console.log(`              why: ${u.why}`)
+    }
+  })
+
+  if (debrief.code) {
+    console.log('\n  read, not run')
+    for (const s of debrief.code.strengths) console.log(`      strength: ${s}`)
+    for (const g of debrief.code.gaps) console.log(`      gap:      ${g}`)
+  }
+
+  console.log(`\n  rehearse (${debrief.rehearse.length})`)
+  const claims = facts.map((f) => normalizeWs(f.claim))
+  let quoted = 0
+  for (const line of debrief.rehearse) {
+    const known = claims.includes(normalizeWs(line))
+    if (known) quoted += 1
+    console.log(`      - ${line}${known ? '' : '   [NOT A PROVIDED CLAIM]'}`)
+  }
+
+  const said = debrief.answers.flatMap((a) => a.unsupported.map((u) => u.said))
+  // guardDebrief's own test, run again from outside: normalised, case-sensitive, substring.
+  const typed = normalizeWs(
+    transcript.filter((t) => t.role === 'user').map((t) => t.text).join('\n'),
+  )
+  const verbatim = said.filter((s) => typed.includes(normalizeWs(s))).length
+
+  // The held claim needs a sharper test than `overlaps`. Two-way containment cannot tell the two
+  // directions apart, and only one of them is a fault: an amber quoting the held claim itself is
+  // the guard failing, while an amber quoting a longer sentence that happens to carry the held
+  // claim is the model flagging the rest of that sentence — which is its job. The old check called
+  // both FALSE POSITIVE, which is how a reader learns to skip the line.
+  const held = normalizeWs(HELD_CLAIM).toLowerCase()
+  const ambers = said.map((s) => normalizeWs(s).toLowerCase())
+  const flagged = ambers.some((s) => held.includes(s))
+  const wrapping = ambers.filter((s) => s !== held && s.includes(held)).length
+
+  console.log('\nchecks')
+  console.log(`  amber sentences quoted verbatim from what the candidate typed: ${verbatim}/${said.length}`)
+  console.log(`  rehearsal lines quoted from the provided claims: ${quoted}/${debrief.rehearse.length}`)
+  console.log(`  the claim the bank does not hold was flagged: ${said.some((s) => overlaps(s, PLANTED_CLAIM)) ? 'ok' : 'MISSED'}`)
+  console.log(
+    `  the claim the bank does hold was not flagged: ${flagged ? 'FALSE POSITIVE: the held claim itself was flagged' : 'ok'}`,
+  )
+  if (wrapping > 0) {
+    console.log(
+      `      note: ${wrapping} amber ${wrapping === 1 ? 'sentence wraps' : 'sentences wrap'} the held claim — read the why`,
+    )
+  }
+  console.log(
+    `  code section present: ${debrief.code ? 'yes' : 'no'}` +
+      ` (mode ${mode} — ${mode === 'coding' ? 'expected' : 'expected none'})`,
+  )
+  console.log(`  answers written: ${debrief.answers.length}, amber items: ${amber}`)
+}
+
+/**
+ * One brief, written the way the round page writes it: for a stage of a loop somebody really
+ * researched, with every question the guides reported handed to the model beside it. One model
+ * call. Read it against what the guides actually said — the citations are the point.
+ */
+async function smokeBrief(file: string, stageOrder: number): Promise<void> {
+  const { company, role, map, parsed, stage, placement, roundType } = setUpRound(file, stageOrder)
+  const reported = reportedQuestions(map)
+  console.log(`brief: ${company} — ${role}`)
+  console.log(`  stage ${stage.order} of ${placement.of}: ${stage.name} [${stage.kind}] → round type ${roundType}`)
+  console.log(`  ${reported.length} reported questions from ${map.guides.length} guides, ${TOM_FACTS.length} facts in the bank`)
+  const brief = await runPrepBrief({ roundType, parsed, facts: TOM_FACTS, stage: placement, reported })
+  reportBrief(brief, TOM_FACTS, reported)
+}
+
+/**
+ * A whole mock session, scripted: start, two fixed answers, end. Four model calls, made against
+ * the flows directly — there is no Firestore here, so the route's session, its token and its
+ * write order have nothing to act on; what this exercises is the half that talks to the model.
+ * The candidate's answers are the same every run on purpose, so two runs of the same stage are
+ * comparable and the debrief's amber items are checkable.
+ */
+async function smokeMock(file: string, stageOrder: number): Promise<void> {
+  const { company, role, map, parsed, stage, roundType, mode } = setUpRound(file, stageOrder)
+  const reported = reportedQuestions(map)
+  // The stage as a session sees it: from the order the session recorded, against the map it was
+  // started on. Frozen here because it is frozen there.
+  const stageSummary = describeStage(
+    roundType,
+    { stageOrder: stage.order, researchedAt: map.researchedAt },
+    map,
+  )
+  const answers = mode === 'coding' ? CODING_ANSWERS : PROSE_ANSWERS
+
+  console.log(`mock: ${company} — ${role}`)
+  console.log(`  stage ${stage.order}: ${stage.name} [${stage.kind}] → round type ${roundType}, mode ${mode}`)
+  console.log(`  ${reported.length} reported questions in the prompt, ${TOM_FACTS.length} facts in the bank`)
+
+  const transcript: MockTurn[] = []
+  const ask = (questionsAsked: number): Promise<MockTurnOut> =>
+    runMockTurn({
+      parsed, stageSummary, reported, facts: TOM_FACTS, mode,
+      questionsAsked,
+      // A first session: there is nothing earlier to avoid repeating.
+      previousQuestions: [],
+      transcript,
+    })
+
+  // `start` — the first question, with nothing asked yet.
+  transcript.push(asTurn(await ask(0)))
+  let questionsAsked = 1
+
+  // Two `answer` actions. The candidate's turn goes down first, exactly as the route writes it
+  // before it calls anything; here that only means the transcript the next call reads.
+  for (const answer of answers) {
+    transcript.push({ role: 'user', text: answer, at: new Date().toISOString() })
+    const turn = await ask(questionsAsked)
+    transcript.push(asTurn(turn))
+    if (turn.kind === 'question') questionsAsked += 1
+  }
+
+  // `end`.
+  const debrief = await runMockDebrief({ parsed, stageSummary, mode, facts: TOM_FACTS, transcript })
+  reportMock(transcript, debrief, mode, TOM_FACTS, reported)
+}
+
+/**
+ * The third positional: which stage of the saved loop to practise, 1 when it is absent. A typo
+ * throws rather than falling back — practising stage 1 and filing it as stage 11 is the one
+ * mistake a run of this cannot recover from, because the output looks perfectly fine.
+ */
+function stageOrderArg(value: string | undefined): number {
+  if (value === undefined) return 1
+  const order = Number(value)
+  if (!Number.isInteger(order) || order < 1) {
+    throw new Error(`stageOrder must be a positive integer, not ${JSON.stringify(value)}`)
+  }
+  return order
+}
+
 async function main(): Promise<void> {
   // The second positional is a file for `profileIngest` and a mode for `formParse`; the
-  // `process` mode reads it as the company, and takes the role from a third.
+  // `process` mode reads it as the company, and takes the role from a third. `brief` and `mock`
+  // read it as a saved `process` transcript, and the third as the stage of that loop to run.
   const [flow, file, role] = process.argv.slice(2)
   if (flow === 'profileIngest' && file) return smokeProfileIngest(file)
   if (flow === 'jobInterpret') return smokeJobInterpret()
@@ -855,11 +1240,14 @@ async function main(): Promise<void> {
   if (flow === 'interview') return smokeInterview()
   if (flow === 'reconcile') return smokeReconcile()
   if (flow === 'process' && file && role) return smokeProcess(file, role)
+  if (flow === 'brief' && file) return smokeBrief(file, stageOrderArg(role))
+  if (flow === 'mock' && file) return smokeMock(file, stageOrderArg(role))
 
   console.error(
     'usage: tsx scripts/smoke-flows.ts profileIngest <file> | jobInterpret |' +
       ' formParse text|image | answerDraft | clarifyDraft | feedbackDistill | story |' +
-      ' interview | reconcile | process "<company>" "<role>"',
+      ' interview | reconcile | process "<company>" "<role>" |' +
+      ' brief <transcript> [stageOrder] | mock <transcript> [stageOrder]',
   )
   process.exitCode = 1
 }

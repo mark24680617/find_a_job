@@ -2,9 +2,15 @@ import { describe, it, expect } from 'vitest'
 import {
   buildInterviewInterpretPrompt,
 } from '@/ai/prompts/interviewInterpret'
-import { buildPrepBriefPrompt, summarizeJob } from '@/ai/prompts/prepBrief'
+import {
+  buildPrepBriefPrompt,
+  summarizeJob,
+  summarizeReported,
+  summarizeStage,
+} from '@/ai/prompts/prepBrief'
 import type { Part } from '@/ai/genkit'
-import type { Fact, ParsedJob } from '@/lib/types'
+import type { ReportedQuestion, StagePlacement } from '@/lib/practice'
+import type { Fact, ParsedJob, ProcessStage } from '@/lib/types'
 import { summarizeFacts } from '@/ai/prompts/jobInterpret'
 
 // Both system texts are the design spec's, word for word. The first carries the round
@@ -15,7 +21,7 @@ import { summarizeFacts } from '@/ai/prompts/jobInterpret'
 // fails if a prompt drifts from one.
 
 const INTERPRET_VERBATIM = `You interpret an interview notice (email text or screenshot).
-- roundType: recruiter-screen | technical | behavioral | panel | onsite | other.
+- roundType: recruiter-screen | technical | system-design | behavioral | panel | onsite | other.
   Judge from the notice's own words (who, how long, "coding", "values", "meet the team").
 - datetime: ISO 8601 with timezone if the notice states one, else null. Never guess a date.
 - people: names/titles of interviewers if stated.
@@ -28,6 +34,10 @@ Sections:
 - likelyTopics: what THIS round type at THIS company probes, tied to the role facts.
 - questionsToPrepare: likely questions + angle = which candidate fact cluster answers each.
   Use only provided facts for angles; never invent an experience.
+  When questions people report being asked are given, lead questionsToPrepare with the ones
+  that fit THIS stage, copied word for word, each with the sourceId of the guide that reported
+  it. Write your own only after those, with sourceId null. A reported question that does not
+  fit this stage is left out, not adapted.
 - questionsToAsk: sharp questions the candidate should ask back, grounded in role facts.
 - factsToRehearse: the candidate's facts (verbatim claims) most load-bearing for this round.
 - redFlags: pitfalls for this candidate in this round (unmet gates that may come up —
@@ -59,6 +69,51 @@ const facts: Fact[] = [
   { id: 'f2', claim: 'Three years backend, mostly Go', sourceSnippet: 'Backend engineer', tags: ['go'] },
 ]
 
+// One stage of a real-looking loop, and the questions three guides reported. `s3` carries no
+// firstHand: guides digested before we recorded the flag have none, and the line for one says
+// neither rather than guessing which it was.
+const stage: ProcessStage = {
+  order: 2,
+  name: 'Hiring manager screen',
+  kind: 'behavioral',
+  format: 'video',
+  duration: '45 minutes',
+  whatItProbes: 'How you work with the people around you.',
+  tips: ['Bring one story per theme.', 'Have a number in each of them.'],
+  sourceIds: ['s1'],
+  confidence: 'community',
+}
+
+const placement: StagePlacement = { stage, of: 5 }
+
+const reported: ReportedQuestion[] = [
+  {
+    sourceId: 's1',
+    host: 'reddit.com',
+    url: 'https://www.reddit.com/r/cscareerquestions/comments/a',
+    text: 'Tell me about a time you disagreed with your manager.',
+    firstHand: true,
+    stale: false,
+    year: '2025',
+  },
+  {
+    sourceId: 's2',
+    host: 'prepsite.example',
+    url: 'https://prepsite.example/marram',
+    text: 'Why this company?',
+    firstHand: false,
+    stale: true,
+  },
+  {
+    sourceId: 's3',
+    host: 'news.ycombinator.com',
+    url: 'https://news.ycombinator.com/item?id=1',
+    text: 'Walk me through your last project.',
+    stale: false,
+    year: '2023',
+  },
+]
+
 const textOf = (parts: Part[]) => parts.map((p) => ('text' in p ? p.text : '')).join('\n')
 
 describe('buildInterviewInterpretPrompt system text', () => {
@@ -70,7 +125,7 @@ describe('buildInterviewInterpretPrompt system text', () => {
 
   it('names every round type in the taxonomy the record stores', () => {
     const s = system()
-    for (const type of ['recruiter-screen', 'technical', 'behavioral', 'panel', 'onsite', 'other']) {
+    for (const type of ['recruiter-screen', 'technical', 'system-design', 'behavioral', 'panel', 'onsite', 'other']) {
       expect(s).toContain(type)
     }
   })
@@ -125,6 +180,12 @@ describe('buildPrepBriefPrompt system text', () => {
     expect(built().system).toContain('Use only provided facts for angles; never invent an experience')
   })
 
+  it('asks for reported questions word for word, cited, and never adapted', () => {
+    const s = built().system
+    expect(s).toContain('copied word for word, each with the sourceId of the guide that reported')
+    expect(s).toContain('A reported question that does not\n  fit this stage is left out, not adapted.')
+  })
+
   it('says what the brief is for, and what it is not', () => {
     expect(built().system).toContain(
       'The brief prepares the candidate to tell their own story clearly. It does not script lies.',
@@ -162,6 +223,81 @@ describe('buildPrepBriefPrompt parts', () => {
       expect(text).toContain(f.id)
       expect(text).toContain(f.claim)
     }
+  })
+
+  it('leaves both map parts out when the application has not been researched', () => {
+    expect(buildPrepBriefPrompt({ roundType: 'onsite', jobSummary: 'JOB', factsSummary: 'FACTS' }).parts).toEqual([
+      { text: 'Round type: onsite' },
+      { text: 'The job:\nJOB' },
+      { text: 'Candidate facts:\nFACTS' },
+    ])
+  })
+
+  // The stage sits directly behind the round type — it is what this round actually is — and the
+  // reported questions come last, after the facts, because they are read against what the
+  // candidate can actually answer.
+  it('puts the stage behind the round type and the reported questions last', () => {
+    const built = buildPrepBriefPrompt({
+      roundType: 'technical',
+      jobSummary: 'JOB',
+      factsSummary: 'FACTS',
+      stageSummary: 'STAGE',
+      reportedSummary: 'REPORTED',
+    })
+    expect(built.parts).toEqual([
+      { text: 'Round type: technical' },
+      { text: 'The stage this round is:\nSTAGE' },
+      { text: 'The job:\nJOB' },
+      { text: 'Candidate facts:\nFACTS' },
+      { text: 'Questions people report being asked at this company:\nREPORTED' },
+    ])
+  })
+})
+
+describe('summarizeStage', () => {
+  it('places the round on the loop, says how it runs and how long, then what it probes and what people advise', () => {
+    expect(summarizeStage(placement)).toBe(
+      [
+        'Stage 2 of 5: Hiring manager screen · video · 45 minutes',
+        'What it probes: How you work with the people around you.',
+        'Tips:',
+        '- Bring one story per theme.',
+        '- Have a number in each of them.',
+      ].join('\n'),
+    )
+  })
+
+  it('states a missing length rather than leaving a gap the model fills in', () => {
+    expect(summarizeStage({ stage: { ...stage, duration: undefined }, of: 5 })).toContain(
+      'Stage 2 of 5: Hiring manager screen · video · length not stated',
+    )
+  })
+
+  it('omits the Tips block entirely when the stage has no tips — an empty heading reads as an instruction to fill it', () => {
+    const bare = summarizeStage({ stage: { ...stage, tips: [] }, of: 5 })
+    expect(bare).not.toContain('Tips:')
+    expect(bare).toBe(
+      [
+        'Stage 2 of 5: Hiring manager screen · video · 45 minutes',
+        'What it probes: How you work with the people around you.',
+      ].join('\n'),
+    )
+  })
+})
+
+describe('summarizeReported', () => {
+  it('leads each line with the source id the model must cite, then how much the line is worth', () => {
+    expect(summarizeReported(reported)).toBe(
+      [
+        's1 [first-hand; 2025]: Tell me about a time you disagreed with your manager.',
+        's2 [second-hand; undated; stale]: Why this company?',
+        's3 [2023]: Walk me through your last project.',
+      ].join('\n'),
+    )
+  })
+
+  it('says (none) rather than nothing when no guide reported a question', () => {
+    expect(summarizeReported([])).toBe('(none)')
   })
 })
 

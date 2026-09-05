@@ -11,7 +11,8 @@ import {
   updateApplication,
   updateInterview,
 } from '@/lib/db'
-import type { AppStatus, Application, InterviewRound } from '@/lib/types'
+import { placeRound, reportedQuestions } from '@/lib/practice'
+import type { AppStatus, Application, InterviewRound, PrepBrief } from '@/lib/types'
 
 // The rounds recorded under one application. GET lists them; POST takes the scheduling notice
 // as it arrived — an email, pasted whole — and turns it into a round with a prep brief on it.
@@ -93,11 +94,24 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   // round already written.
   let briefFailed = false
   try {
-    const profile = await getProfile(user.uid)
+    // `placeRound` settles which stage this round claims from the round as it is STORED — its
+    // id and its createdAt are what break a tie between two rounds of the same kind — so it is
+    // read back here, with the whole list beside it, rather than composed from `out`.
+    const [profile, created, rounds] = await Promise.all([
+      getProfile(user.uid),
+      getInterview(user.uid, id, rid),
+      listInterviews(user.uid, id),
+    ])
+    const placement = created && app.process ? placeRound(created, rounds, app.process) : null
+    // Handed over whenever there is a map, placed or not: a question somebody was actually
+    // asked at this company is worth reading even when we could not say which stage this is.
+    const reported = app.process ? reportedQuestions(app.process) : undefined
     const written = await runPrepBrief({
       roundType: out.roundType,
       parsed: app.parsed,
       facts: profile.facts,
+      stage: placement ?? undefined,
+      reported,
     })
     // The prompt asks for the candidate's claims verbatim; this is where that stops being a
     // request and becomes a property of the record. A rehearsal line that is not one of their
@@ -106,9 +120,23 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     // guard: asked for in the prompt, enforced in code. Dropped rather than retried — the
     // brief is the optional half of this request, and the section simply renders shorter.
     const claims = new Set(profile.facts.map((f) => f.claim.trim()))
-    const prepBrief = {
+    // Annotated: composed into a variable rather than passed as a literal, this loses excess
+    // property checking, and a misspelled key would be written to Firestore beside the right one.
+    const prepBrief: PrepBrief = {
       ...written,
       factsToRehearse: written.factsToRehearse.filter((line) => claims.has(line.trim())),
+      // What this brief was written from, so the round page can offer a rewrite once the map
+      // is newer than the brief. `stageOrder: null` says the map existed and this round is not
+      // on the reported loop; no `basis` at all says there was no map to read. Written by the
+      // route and never by the model — it is a fact about this request, not a judgment.
+      ...(app.process
+        ? {
+            basis: {
+              stageOrder: placement?.stage.order ?? null,
+              researchedAt: app.process.researchedAt,
+            },
+          }
+        : {}),
     }
     await updateInterview(user.uid, id, rid, { prepBrief })
   } catch (error) {

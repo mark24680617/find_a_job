@@ -35,6 +35,12 @@ import type { Changeset, ClarifyAnswer, ClarifyQuestion, Fact } from '@/lib/type
 interface Props {
   /** Increments once per reconcile answer, so a new round's cards seed from that round. */
   round: number
+  /**
+   * Which heading this panel's title is. The profile page mounts it at the top level of the
+   * page; the round page mounts it under a section of its own, where an `h2` would break the
+   * outline. The level follows the page, and nothing else about the panel changes.
+   */
+  headingLevel?: 'h2' | 'h3'
   changeset: Changeset
   questions: ClarifyQuestion[]
   /** The bank as it stands, so a revision can show the claim it is revising. */
@@ -56,6 +62,7 @@ const SAVING = [{ at: 0, text: 'Adding these to your profile…' }] as const
 
 export function ReconcilePanel({
   round,
+  headingLevel = 'h2',
   changeset,
   questions,
   facts,
@@ -85,6 +92,11 @@ export function ReconcilePanel({
     setGuidanceOpen(false)
   }
 
+  // A capitalised local, because JSX reads a lowercase name as an intrinsic tag and this one is
+  // a variable. The level is the caller's: the profile page puts this under its h1, the round
+  // page under one of its h2s. (Its `tabIndex` is explained where the heading is rendered.)
+  const Heading = headingLevel
+
   const byId = new Map(facts.map((f) => [f.id, f]))
   const applies = changeset.adds.length + changeset.updates.length
   const answers = () => questions.map((q) => toClarifyAnswer(q, selections[q.id] ?? seedCard(q)))
@@ -92,9 +104,15 @@ export function ReconcilePanel({
   return (
     <section aria-labelledby="reconcile-heading" className="mt-8 border border-line bg-surface">
       <div className="border-b border-line px-5 py-4">
-        <h2 id="reconcile-heading" className="font-display text-lg tracking-tight text-ink">
+        {/* Focusable because opening the panel moves focus here: it can arrive far below the
+            control that asked for it, and the title is the first thing a reader needs. */}
+        <Heading
+          id="reconcile-heading"
+          tabIndex={-1}
+          className="font-display text-lg tracking-tight text-ink"
+        >
           What this would change
-        </h2>
+        </Heading>
         <p className="mt-1 max-w-[64ch] text-sm leading-relaxed text-ink-2">
           Nothing is saved yet. {summarize(changeset)}
         </p>

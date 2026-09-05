@@ -46,16 +46,74 @@ export interface Application {
   parsed?: ParsedJob; process?: ProcessMap; questions: Question[]
   status: AppStatus; timeline: TimelineEvent[]; createdAt: string
 }
-export type RoundType = 'recruiter-screen' | 'technical' | 'behavioral' | 'panel' | 'onsite' | 'other'
+// RoundType gains 'system-design'. Without it a system-design notice is typed 'technical' and
+// can never claim the map's system-design stage, and the design practice mode never happens.
+export type RoundType =
+  | 'recruiter-screen' | 'technical' | 'system-design' | 'behavioral' | 'panel' | 'onsite' | 'other'
+
 export interface PrepBrief {
-  likelyTopics: string[]; questionsToPrepare: { q: string; angle: string }[]
+  likelyTopics: string[]
+  // sourceId is present only when `q` is a question a guide reported, copied verbatim.
+  questionsToPrepare: { q: string; angle: string; sourceId?: string }[]
   questionsToAsk: string[]; factsToRehearse: string[]; redFlags: string[]
+  // Present when the brief was written with the map. stageOrder is null when the map existed
+  // but the round was not on the reported loop. Set by the route, never by the model.
+  basis?: { stageOrder: number | null; researchedAt: string }
 }
+
+// ── The mock round ───────────────────────────────────────────────────────────────────────
+// One practice interview against one logged round: an interviewer for that stage, the
+// candidate's own answers, and a debrief that reads them back. Nothing here is written about
+// the candidate that is not one of their facts or one of their sentences — the prompts ask
+// for that and `src/lib/mockGuard.ts` makes it a property of the record.
+
+export type PracticeMode = 'coding' | 'design' | 'conversation'
+
+export interface MockTurn {
+  role: 'user' | 'model'
+  text: string
+  // Model turns only. `sourceId` when the turn asks a reported question verbatim.
+  kind?: 'question' | 'follow-up' | 'closing'
+  sourceId?: string
+  at: string                 // ISO
+}
+
+export interface MockDebrief {
+  overall: string
+  answers: {
+    question: string
+    landed: string[]
+    vague: string[]
+    // `said` is a verbatim sentence of the candidate's; `added` once it has reached the bank.
+    unsupported: { said: string; why: string; added?: boolean }[]
+  }[]
+  code?: { strengths: string[]; gaps: string[] }   // coding mode only
+  rehearse: string[]                               // fact claims, verbatim — filtered in code
+  factsChecked: number                             // how many facts the bank held at the debrief
+}
+
+export interface MockSession {
+  mode: PracticeMode
+  // The stage the session was started against, and the map it was read from. Absent when the
+  // round is not on the loop or there is no map. Frozen here so that a round logged mid-mock,
+  // or a re-run of the research, cannot move the stage under an open session.
+  stageOrder?: number
+  researchedAt?: string
+  startedAt: string          // ISO; also the session token every later action must carry
+  questionsAsked: number
+  status: 'open' | 'debriefed'
+  debrief?: MockDebrief
+  debriefedAt?: string
+  // Questions asked in earlier sessions of this round, so "Start over" gets different ones.
+  previousQuestions: string[]
+}
+
 export interface InterviewRound {
   id: string; noticeRaw: string; roundType: RoundType; datetime?: string
   people: string[]; prepBrief?: PrepBrief
   askHuman?: AskHuman[]  // what the notice didn't say; display-only, and it survives a reload
-  chat: { role: 'user' | 'model'; text: string }[]
+  chat: MockTurn[]       // the transcript of the current or most recent session; only `start` clears it
+  mock?: MockSession
   createdAt: string
 }
 

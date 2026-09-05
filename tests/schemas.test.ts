@@ -6,6 +6,8 @@ import {
   FormParseOutSchema,
   InterviewInterpretOutSchema,
   JobInterpretOutSchema,
+  MockDebriefOutSchema,
+  MockTurnOutSchema,
   PrepBriefOutSchema,
   ProfileIngestOutSchema,
   ReconcileOutSchema,
@@ -403,13 +405,22 @@ describe('InterviewInterpretOutSchema', () => {
       false,
     )
   })
+
+  it('accepts the system-design round type the map’s stages already had', () => {
+    expect(InterviewInterpretOutSchema.parse({ ...valid, roundType: 'system-design' }).roundType).toBe(
+      'system-design',
+    )
+  })
 })
 
 describe('PrepBriefOutSchema', () => {
   const valid = {
     likelyTopics: ['payments reliability', 'on-call practice'],
+    // One question lifted from a guide, one the model wrote itself. Both say where they came
+    // from, which is what lets the screen put "reported by" on exactly one of them.
     questionsToPrepare: [
-      { q: 'Walk me through the payments service', angle: 'lead with the 12k req/day number' },
+      { q: 'How do you test a payment retry?', angle: 'f1 — the payments service', sourceId: 's3' },
+      { q: 'Walk me through the payments service', angle: 'lead with the 12k req/day number', sourceId: null },
     ],
     questionsToAsk: ['How is on-call rotated across the team?'],
     factsToRehearse: ['f1', 'f2'],
@@ -421,11 +432,76 @@ describe('PrepBriefOutSchema', () => {
   })
 
   it('rejects a prepared question without an angle', () => {
-    const bad = { ...valid, questionsToPrepare: [{ q: 'Tell me about yourself' }] }
+    const bad = { ...valid, questionsToPrepare: [{ q: 'Tell me about yourself', sourceId: null }] }
+    expect(PrepBriefOutSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('rejects an omitted sourceId — a question with no guide behind it has to say so', () => {
+    const bad = { ...valid, questionsToPrepare: [{ q: 'Tell me about yourself', angle: 'f1' }] }
     expect(PrepBriefOutSchema.safeParse(bad).success).toBe(false)
   })
 
   it('rejects a brief missing a section', () => {
     expect(PrepBriefOutSchema.safeParse(without(valid, 'redFlags')).success).toBe(false)
+  })
+})
+
+describe('MockTurnOutSchema', () => {
+  const valid = {
+    say: 'Tell me about a time you disagreed with your manager.',
+    sourceId: 's1',
+    kind: 'question' as const,
+  }
+
+  it('accepts a cited question and an uncited follow-up', () => {
+    expect(MockTurnOutSchema.parse(valid)).toEqual(valid)
+    const followUp = { ...valid, sourceId: null, kind: 'follow-up' as const }
+    expect(MockTurnOutSchema.parse(followUp)).toEqual(followUp)
+  })
+
+  it('rejects a turn with nothing to say', () => {
+    expect(MockTurnOutSchema.safeParse({ ...valid, say: '' }).success).toBe(false)
+  })
+
+  it('rejects the closing kind — the route writes that line, not the model', () => {
+    expect(MockTurnOutSchema.safeParse({ ...valid, kind: 'closing' }).success).toBe(false)
+  })
+
+  it('rejects an omitted sourceId — uncited must be spelled null', () => {
+    expect(MockTurnOutSchema.safeParse(without(valid, 'sourceId')).success).toBe(false)
+  })
+})
+
+describe('MockDebriefOutSchema', () => {
+  const valid = {
+    overall: 'You told the migration story well and stayed general on the sharding.',
+    answers: [
+      {
+        question: 'Tell me about a time you disagreed with your manager.',
+        landed: ['The date change was concrete.'],
+        vague: ['No number for what the delay cost.'],
+        unsupported: [{ said: 'We moved it two weeks', why: 'No fact records that migration.' }],
+      },
+    ],
+    code: null,
+    rehearse: ['Led a team of six for three years'],
+  }
+
+  it('accepts a debrief whose round had no code box', () => {
+    expect(MockDebriefOutSchema.parse(valid)).toEqual(valid)
+  })
+
+  it('accepts the code block a coding round gets', () => {
+    const coding = { ...valid, code: { strengths: ['the names are clear'], gaps: ['no empty-input case'] } }
+    expect(MockDebriefOutSchema.parse(coding)).toEqual(coding)
+  })
+
+  it('rejects an omitted code — no code block must be spelled null', () => {
+    expect(MockDebriefOutSchema.safeParse(without(valid, 'code')).success).toBe(false)
+  })
+
+  it('rejects an unsupported sentence with no reason beside it', () => {
+    const bad = { ...valid, answers: [{ ...valid.answers[0], unsupported: [{ said: 'We moved it two weeks' }] }] }
+    expect(MockDebriefOutSchema.safeParse(bad).success).toBe(false)
   })
 })

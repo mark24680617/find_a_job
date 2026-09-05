@@ -3,6 +3,7 @@ import { runInterviewInterpret } from '@/ai/flows/interviewInterpret'
 import { runPrepBrief } from '@/ai/flows/prepBrief'
 import { type GenerateCall } from '@/ai/genkit'
 import { InterviewInterpretOutSchema, PrepBriefOutSchema } from '@/ai/schemas'
+import type { ReportedQuestion, StagePlacement } from '@/lib/practice'
 import type { Fact, ParsedJob } from '@/lib/types'
 
 // The Genkit call is injected, so these exercise the real prompts, the real schemas and the
@@ -74,24 +75,66 @@ const facts: Fact[] = [
   { id: 'f1', claim: 'Owns a payments service at 99.95% success', sourceSnippet: 'Payments team', tags: ['payments'] },
 ]
 
-const brief = {
+// What the model returns and what the flow returns are no longer the same shape: every prepared
+// question comes back with a sourceId, `null` when the model wrote the question itself, and the
+// flow hands on the stored shape — a citation that checked out, or no sourceId at all.
+const briefOut = {
   likelyTopics: ['Why this role, and the ledger rewrite'],
-  questionsToPrepare: [{ q: 'Walk me through your background', angle: 'f1 — the payments service' }],
+  questionsToPrepare: [
+    { q: 'Walk me through your background', angle: 'f1 — the payments service', sourceId: null },
+  ],
   questionsToAsk: ['Who owns reconciliation today?'],
   factsToRehearse: ['Owns a payments service at 99.95% success'],
   redFlags: ['Three years against a stated five-year minimum — say so plainly.'],
 }
 
+const briefStored = {
+  ...briefOut,
+  questionsToPrepare: [{ q: 'Walk me through your background', angle: 'f1 — the payments service' }],
+}
+
+const briefWith = (question: { q: string; angle: string; sourceId: string | null }) => ({
+  ...briefOut,
+  questionsToPrepare: [question],
+})
+
+const placement: StagePlacement = {
+  stage: {
+    order: 2,
+    name: 'Coding round',
+    kind: 'technical',
+    format: 'video',
+    duration: '60 minutes',
+    whatItProbes: 'Whether you can write working code with someone watching.',
+    tips: ['Say your assumptions out loud.'],
+    sourceIds: ['s1'],
+    confidence: 'community',
+  },
+  of: 4,
+}
+
+const reported: ReportedQuestion[] = [
+  {
+    sourceId: 's1',
+    host: 'reddit.com',
+    url: 'https://www.reddit.com/r/cscareerquestions/comments/a',
+    text: 'How do you keep a ledger consistent under retries?',
+    firstHand: true,
+    stale: false,
+    year: '2025',
+  },
+]
+
 describe('runPrepBrief', () => {
-  it('returns the brief', async () => {
-    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: brief }))
+  it('returns the brief in the shape the record stores', async () => {
+    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
     await expect(
       runPrepBrief({ roundType: 'recruiter-screen', parsed, facts }, generate),
-    ).resolves.toEqual(brief)
+    ).resolves.toEqual(briefStored)
   })
 
   it('spends 1024 thinking tokens at temperature 0 — five sections, each a judgment', async () => {
-    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: brief }))
+    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
     await runPrepBrief({ roundType: 'recruiter-screen', parsed, facts }, generate)
 
     const req = sent(generate)
@@ -101,7 +144,7 @@ describe('runPrepBrief', () => {
   })
 
   it('sends the round type, the compact posting and a snippet-free fact summary', async () => {
-    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: brief }))
+    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
     await runPrepBrief({ roundType: 'technical', parsed, facts }, generate)
 
     const text = textOf(sent(generate))
@@ -116,10 +159,85 @@ describe('runPrepBrief', () => {
   })
 
   it('writes a brief for a candidate with no facts yet', async () => {
-    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: brief }))
+    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
     await expect(
       runPrepBrief({ roundType: 'onsite', parsed, facts: [] }, generate),
-    ).resolves.toEqual(brief)
+    ).resolves.toEqual(briefStored)
     expect(generate).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends the mapped stage and the questions people report when the loop has been researched', async () => {
+    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
+    await runPrepBrief({ roundType: 'technical', parsed, facts, stage: placement, reported }, generate)
+
+    const text = textOf(sent(generate))
+    expect(text).toContain('Stage 2 of 4: Coding round · video · 60 minutes')
+    expect(text).toContain('What it probes: Whether you can write working code with someone watching.')
+    expect(text).toContain('- Say your assumptions out loud.')
+    expect(text).toContain('s1 [first-hand; 2025]: How do you keep a ledger consistent under retries?')
+  })
+
+  it('sends neither part when the loop has not been researched', async () => {
+    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
+    await runPrepBrief({ roundType: 'technical', parsed, facts }, generate)
+
+    const text = textOf(sent(generate))
+    expect(text).not.toContain('The stage this round is:')
+    expect(text).not.toContain('Questions people report being asked at this company:')
+  })
+
+  it('says so when the map turned up no reported question at all', async () => {
+    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
+    await runPrepBrief({ roundType: 'technical', parsed, facts, reported: [] }, generate)
+
+    expect(textOf(sent(generate))).toContain(
+      'Questions people report being asked at this company:\n(none)',
+    )
+  })
+
+  it('keeps a citation whose question is one that source reported, word for word', async () => {
+    const cited = {
+      q: 'How do you keep a ledger consistent under retries?',
+      angle: 'f1 — the payments service',
+      sourceId: 's1',
+    }
+    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefWith(cited) }))
+    const out = await runPrepBrief({ roundType: 'technical', parsed, facts, reported }, generate)
+
+    expect(out.questionsToPrepare).toEqual([{ q: cited.q, angle: cited.angle, sourceId: 's1' }])
+  })
+
+  // Dropped, not retried: the question is still worth preparing, and a citation nobody can check
+  // is the one thing the screen may not show.
+  it('drops a citation naming a source we never handed over, and keeps the question', async () => {
+    const generate = vi.fn<GenerateCall>(() =>
+      Promise.resolve({
+        output: briefWith({
+          q: 'How do you keep a ledger consistent under retries?',
+          angle: 'f1 — the payments service',
+          sourceId: 's9',
+        }),
+      }),
+    )
+    const out = await runPrepBrief({ roundType: 'technical', parsed, facts, reported }, generate)
+
+    expect(out.questionsToPrepare[0].q).toBe('How do you keep a ledger consistent under retries?')
+    expect(out.questionsToPrepare[0].sourceId).toBeUndefined()
+    expect(generate).toHaveBeenCalledTimes(1)
+  })
+
+  it('stores no sourceId at all for a question the model wrote itself', async () => {
+    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
+    const out = await runPrepBrief({ roundType: 'technical', parsed, facts, reported }, generate)
+
+    expect(out.questionsToPrepare[0].sourceId).toBeUndefined()
+    expect(JSON.stringify(out)).not.toContain('sourceId')
+  })
+
+  it('leaves basis to the route — the flow never sees which map it was handed', async () => {
+    const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
+    const out = await runPrepBrief({ roundType: 'technical', parsed, facts, stage: placement, reported }, generate)
+
+    expect('basis' in out).toBe(false)
   })
 })

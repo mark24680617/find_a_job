@@ -12,7 +12,7 @@
 import type { Part } from '@/ai/genkit'
 
 const SYSTEM = `You interpret an interview notice (email text or screenshot).
-- roundType: recruiter-screen | technical | behavioral | panel | onsite | other.
+- roundType: recruiter-screen | technical | system-design | behavioral | panel | onsite | other.
   Judge from the notice's own words (who, how long, "coding", "values", "meet the team").
 - datetime: ISO 8601 with timezone if the notice states one, else null. Never guess a date.
 - people: names/titles of interviewers if stated.

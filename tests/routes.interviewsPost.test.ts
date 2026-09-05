@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { FlowOutputError } from '@/ai/genkit'
-import type { Application, Fact, InterviewRound, PrepBrief, Profile } from '@/lib/types'
+import type { PrepBriefInput } from '@/ai/flows/prepBrief'
+import type { Application, Fact, InterviewRound, PrepBrief, ProcessMap, Profile } from '@/lib/types'
 
 // The handler with everything behind it faked: no Admin SDK, no model calls. What is under
 // test is the logging contract — the round (the human's own data) is written BEFORE the brief
@@ -110,6 +111,28 @@ const stored: InterviewRound = {
   createdAt: '2026-08-29T10:00:00.000Z',
 }
 
+// A researched loop for this application: three stages, one guide that reported one question.
+// `placeRound` and `reportedQuestions` are NOT mocked — they are pure, and what they hand the
+// brief is the whole point of this section. Only the model, the auth guard and Firestore are faked.
+const researched = (stages?: ProcessMap['stages']): ProcessMap => ({
+  stages: stages ?? [
+    { order: 1, name: 'Recruiter screen', kind: 'recruiter-screen', format: 'call', duration: '30 min', whatItProbes: 'Motivation and comp.', tips: ['Have a number ready.'], sourceIds: ['s1'], confidence: 'community' },
+    { order: 2, name: 'Coding interview', kind: 'technical', format: 'video', whatItProbes: 'Code in a shared editor.', tips: [], sourceIds: ['s1'], confidence: 'community' },
+    { order: 3, name: 'Onsite loop', kind: 'onsite', format: 'onsite', whatItProbes: 'The team.', tips: [], sourceIds: [], confidence: 'inferred' },
+  ],
+  takeHome: { present: 'no', description: '', tips: [], sourceIds: [] },
+  sources: [
+    { id: 's1', title: 'My Marram loop', url: 'https://www.reddit.com/r/cscareerquestions/1/', host: 'reddit.com', kind: 'community', snippet: 'I interviewed at Marram', publishedAt: '2026-03-01T00:00:00.000Z', fetched: true },
+  ],
+  guides: [
+    { sourceId: 's1', takeaways: ['Two coding rounds'], questionsReported: ['Why Marram?'], quotes: [], stale: false, firstHand: true },
+  ],
+  askRecruiter: [], caveats: [], grounded: true, researchedAt: '2026-09-01T00:00:00.000Z',
+})
+
+/** The same round, typed so it claims stage 2 rather than the first stage on the loop. */
+const technicalRound: InterviewRound = { ...stored, roundType: 'technical' }
+
 const post = (body: unknown = { noticeText: NOTICE }) =>
   POST(
     new Request('https://example.test/api/applications/app-1/interviews', {
@@ -129,6 +152,7 @@ beforeEach(() => {
   updateInterview.mockResolvedValue(undefined)
   updateApplication.mockResolvedValue(undefined)
   getInterview.mockResolvedValue(stored)
+  listInterviews.mockResolvedValue([stored])
   runInterviewInterpret.mockResolvedValue(interpreted)
   runPrepBrief.mockResolvedValue(brief)
 })
@@ -321,5 +345,71 @@ describe('POST /api/applications/[id]/interviews — when a flow fails', () => {
   it('does not swallow a database failure while writing the brief', async () => {
     updateInterview.mockRejectedValue(new Error('firestore unavailable'))
     await expect(post()).rejects.toThrow(/firestore unavailable/)
+  })
+})
+
+describe('POST /api/applications/[id]/interviews — the brief written from the map', () => {
+  beforeEach(() => {
+    runInterviewInterpret.mockResolvedValue({ ...interpreted, roundType: 'technical' })
+    getInterview.mockResolvedValue(technicalRound)
+    listInterviews.mockResolvedValue([technicalRound])
+  })
+
+  it('hands the brief the stage this round maps to, and every question a guide reported', async () => {
+    getApplication.mockResolvedValue(application({ process: researched() }))
+
+    await post()
+    const input = runPrepBrief.mock.calls[0][0] as PrepBriefInput
+    expect(input.stage?.stage.order).toBe(2)
+    expect(input.stage?.stage.name).toBe('Coding interview')
+    expect(input.stage?.of).toBe(3)
+    expect(input.reported).toHaveLength(1)
+    expect(input.reported?.[0]).toMatchObject({ sourceId: 's1', text: 'Why Marram?' })
+  })
+
+  it('records what the brief was written from — the mapped stage and the map’s date', async () => {
+    getApplication.mockResolvedValue(application({ process: researched() }))
+
+    await post()
+    const written = updateInterview.mock.calls[0][3] as { prepBrief: PrepBrief }
+    expect(written.prepBrief.basis).toEqual({
+      stageOrder: 2,
+      researchedAt: '2026-09-01T00:00:00.000Z',
+    })
+  })
+
+  it('writes stageOrder null for a round the reported loop has no place for', async () => {
+    // The map exists, so the reported questions still go over — a question somebody was asked
+    // at this company is worth reading whether or not we could say which stage this round is —
+    // but there is no stage to summarise, and `basis` has to say which of the two happened.
+    getApplication.mockResolvedValue(
+      application({
+        process: researched([
+          { order: 1, name: 'Recruiter screen', kind: 'recruiter-screen', format: 'call', whatItProbes: 'Motivation.', tips: [], sourceIds: ['s1'], confidence: 'community' },
+        ]),
+      }),
+    )
+
+    await post()
+    const input = runPrepBrief.mock.calls[0][0] as PrepBriefInput
+    expect(input.stage).toBeUndefined()
+    expect(input.reported).toHaveLength(1)
+    const written = updateInterview.mock.calls[0][3] as { prepBrief: PrepBrief }
+    expect(written.prepBrief.basis).toEqual({
+      stageOrder: null,
+      researchedAt: '2026-09-01T00:00:00.000Z',
+    })
+  })
+
+  it('says nothing about a basis when the loop was never researched', async () => {
+    // The default application has no `process`. The brief is exactly the one logging has
+    // always written, and the absence of `basis` is how the round page knows not to claim
+    // research went into it.
+    await post()
+    const input = runPrepBrief.mock.calls[0][0] as PrepBriefInput
+    expect(input.stage).toBeUndefined()
+    expect(input.reported).toBeUndefined()
+    const written = updateInterview.mock.calls[0][3] as { prepBrief: PrepBrief }
+    expect('basis' in written.prepBrief).toBe(false)
   })
 })

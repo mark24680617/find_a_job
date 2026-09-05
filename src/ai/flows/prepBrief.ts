@@ -1,8 +1,14 @@
 import { generateStructured, type GenerateCall } from '@/ai/genkit'
 import { summarizeFacts } from '@/ai/prompts/jobInterpret'
-import { buildPrepBriefPrompt, summarizeJob } from '@/ai/prompts/prepBrief'
-import { PrepBriefOutSchema, type PrepBriefOut } from '@/ai/schemas'
-import type { Fact, ParsedJob, RoundType } from '@/lib/types'
+import {
+  buildPrepBriefPrompt,
+  summarizeJob,
+  summarizeReported,
+  summarizeStage,
+} from '@/ai/prompts/prepBrief'
+import { PrepBriefOutSchema } from '@/ai/schemas'
+import { citeReported, type ReportedQuestion, type StagePlacement } from '@/lib/practice'
+import type { Fact, ParsedJob, PrepBrief, RoundType } from '@/lib/types'
 
 /**
  * Five sections, each of which has to be weighed against the same three inputs: which of the
@@ -16,22 +22,44 @@ export interface PrepBriefInput {
   roundType: RoundType
   parsed: ParsedJob
   facts: Fact[]
+  /** The stage this round maps to — present only when there is a map and the round is on it. */
+  stage?: StagePlacement
+  /**
+   * Every question every guide reported, whenever a map exists — mapped or not. A round that
+   * is not on the reported loop is still at this company, and what people were asked there is
+   * the best material a brief can have.
+   */
+  reported?: ReportedQuestion[]
 }
 
-/** One round of one posting, plus the candidate's facts, in — the prep brief out. */
+/**
+ * One round of one posting, plus the candidate's facts, in — the prep brief out. With the map,
+ * the brief also sees the stage this round is and the questions people report being asked, and
+ * may lead with those, copied word for word and cited.
+ */
 export async function runPrepBrief(
   input: PrepBriefInput,
   generate?: GenerateCall,
-): Promise<PrepBriefOut> {
+): Promise<Omit<PrepBrief, 'basis'>> {
   const { system, parts } = buildPrepBriefPrompt({
     roundType: input.roundType,
     jobSummary: summarizeJob(input.parsed),
     // The same one-line-per-fact summary the gate judgment reads: an angle is chosen against
     // the claim, and the provenance snippet behind it is the profile editor's business.
     factsSummary: summarizeFacts(input.facts),
+    stageSummary: input.stage ? summarizeStage(input.stage) : undefined,
+    // An empty list still goes in, as `(none)`: "the research found no reported question" is a
+    // fact about this company, and a model told nothing infers it may invent something.
+    reportedSummary: input.reported ? summarizeReported(input.reported) : undefined,
   })
-  return generateStructured(
+  const out = await generateStructured(
     { parts, system, schema: PrepBriefOutSchema, thinkingBudget: THINKING_BUDGET },
     generate,
   )
+  // Asked for in the prompt, enforced here, exactly as the rehearsal-line filter is: a sourceId
+  // the model returned is a claim that a named guide asked this question in these words, and it
+  // becomes a link on the round page. So it is checked against the list we handed over, and a
+  // citation that does not check out is dropped while the question stays — the question is still
+  // worth preparing. `null` leaves as absent, which is what the record stores.
+  return { ...out, questionsToPrepare: citeReported(out.questionsToPrepare, input.reported ?? []) }
 }

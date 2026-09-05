@@ -20,6 +20,7 @@ const ARTIFACT_SCOPES: ArtifactScope[] = ['per-application', 'per-profile', 'unk
 const ROUND_TYPES: RoundType[] = [
   'recruiter-screen',
   'technical',
+  'system-design',
   'behavioral',
   'panel',
   'onsite',
@@ -110,8 +111,8 @@ const round: InterviewRound = {
     redFlags: ['role scope shifted twice in the JD'],
   },
   chat: [
-    { role: 'model', text: 'Tell me about yourself.' },
-    { role: 'user', text: 'I build products end to end.' },
+    { role: 'model', text: 'Tell me about yourself.', at: '2026-08-27T09:00:00.000Z' },
+    { role: 'user', text: 'I build products end to end.', at: '2026-08-27T09:01:30.000Z' },
   ],
   createdAt: '2026-08-27T00:00:00Z',
 }
@@ -121,7 +122,7 @@ describe('domain types', () => {
     expect(APP_STATUSES).toHaveLength(5)
     expect(GATE_POSTURES).toHaveLength(3)
     expect(ARTIFACT_SCOPES).toHaveLength(3)
-    expect(ROUND_TYPES).toHaveLength(6)
+    expect(ROUND_TYPES).toHaveLength(7)
   })
 
   it('narrows AppStatus exhaustively', () => {

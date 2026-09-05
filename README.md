@@ -64,7 +64,7 @@ login` is what gives the server side its Firestore credentials locally; on Cloud
 code picks up the runtime service account instead.
 
 ```sh
-npm test          # 968 tests
+npm test          # 1159 tests
 npm run build     # production build, typecheck included
 ```
 

@@ -8,6 +8,7 @@ import type { RoundType } from '@/lib/types'
 export const ROUND_LABEL: Record<RoundType, string> = {
   'recruiter-screen': 'Recruiter screen',
   technical: 'Technical',
+  'system-design': 'System design',
   behavioral: 'Behavioral',
   panel: 'Panel',
   onsite: 'Onsite',

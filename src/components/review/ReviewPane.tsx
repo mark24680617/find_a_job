@@ -119,6 +119,11 @@ export function ReviewPane({
   const [active, setActive] = useState<Citation | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  // Kept apart from `saveError`: the clipboard failing has nothing to do with the answer being
+  // stored, and one line doing both jobs would tell the person their work was lost when it isn't.
+  const [copied, setCopied] = useState(false)
+  const [copyError, setCopyError] = useState('')
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // The positioning round. `question.clarify` is the persisted set of questions the agent is
   // asking this time; `selections` is the human's unsaved answer to it, seeded from each
@@ -160,6 +165,15 @@ export function ReviewPane({
   useEffect(() => {
     if (active) sourceRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [active])
+
+  // The pane is remounted per question, so a "Copied" that has not timed out yet would otherwise
+  // set state on a component that is gone.
+  useEffect(
+    () => () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current)
+    },
+    [],
+  )
 
   async function draft(
     humanAnswers: { question: string; answer: string }[],
@@ -258,6 +272,26 @@ export function ReviewPane({
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  /**
+   * Put whatever is in the box on the clipboard. Not the saved final — what is on screen is what
+   * the person is about to paste into the form, and the form does not care whether it was saved.
+   * The label carries the confirmation for two seconds; clicking again restarts that.
+   */
+  async function copyFinal() {
+    setCopyError('')
+    try {
+      await navigator.clipboard.writeText(finalText)
+      setCopied(true)
+      if (copyTimer.current) clearTimeout(copyTimer.current)
+      copyTimer.current = setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // No permission, or not a secure context. There is nothing to retry for them, so the line
+      // says what they can do instead.
+      setCopied(false)
+      setCopyError('Couldn’t copy — select the text and copy it yourself.')
     }
   }
 
@@ -787,6 +821,19 @@ export function ReviewPane({
           >
             {saving ? 'Saving…' : 'Save final'}
           </button>
+          <button
+            type="button"
+            className="btn btn-quiet"
+            disabled={finalText.trim() === ''}
+            onClick={() => void copyFinal()}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          {copyError && (
+            <p role="alert" className="max-w-[52ch] text-sm text-danger">
+              {copyError}
+            </p>
+          )}
           <p
             role="status"
             aria-live="polite"

@@ -295,6 +295,7 @@ function ApplicationWorkspace({ id }: { id: string }) {
       <InterviewsSection
         appId={app.id}
         rounds={rounds}
+        sources={app.process?.sources}
         open={logging}
         onClose={() => setLogging(false)}
         onLogged={(round) => {

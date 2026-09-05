@@ -30,6 +30,17 @@ describe('mapRoundToStage', () => {
     // the round was never walked to.
     expect(mapRoundToStage(r4, rounds, map)).toBeNull()
   })
+  it('gives a system-design round the system-design stage rather than a coding one', () => {
+    // This is what the round type was added for. Typed 'technical' — which is what a
+    // system-design notice used to be read as — this round would have claimed the coding
+    // stage, and the mock would have set it a coding problem for a design round.
+    const designMap: ProcessMap = {
+      ...map,
+      stages: [stage(1, 'technical', 'Coding round'), stage(2, 'system-design', 'System & API Design')],
+    }
+    const r = round('r1', 'system-design', '2026-09-01T00:00:00.000Z')
+    expect(mapRoundToStage(r, [r], designMap)?.name).toBe('System & API Design')
+  })
 })
 
 describe('stagePosition / nextStage', () => {
