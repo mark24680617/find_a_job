@@ -1,5 +1,6 @@
+import { FieldValue } from 'firebase-admin/firestore'
 import { adminAuth, adminDb } from '@/lib/firebase/admin'
-import type { Application, InterviewRound, Profile, Usage } from '@/lib/types'
+import type { Application, Assignment, InterviewRound, Profile, Usage } from '@/lib/types'
 
 // Firestore accessors. Everything is scoped under users/{uid}, so a caller that has
 // authenticated a uid cannot reach another user's data by construction. Mapping only —
@@ -88,6 +89,29 @@ export async function updateInterview(
   patch: Partial<InterviewRound>,
 ): Promise<void> {
   await roundsCol(uid, appId).doc(rid).update(patch)
+}
+
+/**
+ * The brief, and the plan it invalidates, in one write.
+ *
+ * A plan is drawn from one text. The moment a different brief arrives, every quote in the guide
+ * belongs to a document nobody is holding any more — so the plan goes with the brief it was
+ * drawn from rather than sitting under one it was never written for. `updateInterview` cannot
+ * say that: the app sets `ignoreUndefinedProperties` (src/lib/firebase/admin.ts, and it is set
+ * for good reason — optional domain fields reach writes as `undefined`), so a patch carrying
+ * `takeHome: undefined` would be dropped and the old plan would survive. `FieldValue.delete()`
+ * is the sentinel that means remove this key, and one update means the record is never a new
+ * brief beside an old plan, not even between two writes.
+ *
+ * The notice is not touched. It is what arrived; a brief is what the candidate went and got.
+ */
+export async function replaceAssignment(
+  uid: string,
+  appId: string,
+  rid: string,
+  assignment: Assignment,
+): Promise<void> {
+  await roundsCol(uid, appId).doc(rid).update({ assignment, takeHome: FieldValue.delete() })
 }
 
 /**

@@ -12,6 +12,7 @@ export const ROUND_LABEL: Record<RoundType, string> = {
   behavioral: 'Behavioral',
   panel: 'Panel',
   onsite: 'Onsite',
+  'take-home': 'Take-home',
   other: 'Interview',
 }
 

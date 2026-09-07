@@ -12,12 +12,17 @@
 import type { Part } from '@/ai/genkit'
 
 const SYSTEM = `You interpret an interview notice (email text or screenshot).
-- roundType: recruiter-screen | technical | system-design | behavioral | panel | onsite | other.
+- roundType: recruiter-screen | technical | system-design | behavioral | panel | onsite | take-home | other.
   Judge from the notice's own words (who, how long, "coding", "values", "meet the team").
+  A notice that hands over an assignment to complete on the candidate's own time is take-home;
+  its datetime is the deadline, if stated.
 - datetime: ISO 8601 with timezone if the notice states one, else null. Never guess a date.
+  A deadline given as a date without a time is the end of that day (23:59) in the zone the
+  notice states; with no zone stated, null.
 - people: names/titles of interviewers if stated.
 - askHuman: what the notice does not say that preparation needs (round number? recruiter
-  said what to expect? is there a take-home?). Ask, do not guess.`
+  said what to expect? is there a take-home — or, for one, what is the deadline and what is to
+  be submitted?). Ask, do not guess.`
 
 export interface InterviewInterpretPromptInput {
   /** The notice as it arrived — an email pasted whole, headers, signature and all. */

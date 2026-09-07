@@ -29,12 +29,21 @@ export async function GET(req: Request, ctx: Ctx): Promise<Response> {
     return Response.json({ error: 'this round has no scheduled time yet' }, { status: 400 })
   }
 
+  // A take-home's `datetime` is a deadline, not a meeting: nothing happens at it, everything is
+  // due by it. So the event is the hour that ENDS there — `DEFAULT_MINUTES` before it, for
+  // exactly `DEFAULT_MINUTES` — which keeps the two tied together, and keeps a deadline stated
+  // as a date alone (23:59, spec §3.1) off the following day's page.
+  const takeHome = round.roundType === 'take-home'
+  const due = Date.parse(round.datetime)
+
   const ics = buildIcs({
     // The round's own id, so a re-export after a reschedule or a changed interviewer list
     // replaces the calendar entry instead of leaving the old time beside the new one.
     uid: `${rid}@find-a-job`,
-    title: `${ROUND_LABEL[round.roundType]} — ${app.company}`,
-    startIso: round.datetime,
+    title: takeHome
+      ? `Take-home due — ${app.company}`
+      : `${ROUND_LABEL[round.roundType]} — ${app.company}`,
+    startIso: takeHome ? new Date(due - DEFAULT_MINUTES * 60_000).toISOString() : round.datetime,
     durationMin: DEFAULT_MINUTES,
     description: [
       `${app.company} — ${app.role}`,

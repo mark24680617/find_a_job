@@ -110,6 +110,29 @@ describe('GET /api/applications/[id]/interviews/[rid]/ics', () => {
     expect((await ICS(req(), icsCtx)).status).toBe(400)
   })
 
+  it('writes a take-home as the hour that ends at its deadline', async () => {
+    getInterview.mockResolvedValue({ ...round, roundType: 'take-home' })
+    const body = await (await ICS(req(), icsCtx)).text()
+    // Not "Take-home — Nectir": what goes in the calendar is the moment it is due, and the
+    // word that says so is the one thing a glance at a phone gets.
+    expect(body).toContain('SUMMARY:Take-home due — Nectir')
+    expect(body).toContain('DTSTART:20260905T160000Z')
+    expect(body).toContain('DTEND:20260905T170000Z')
+  })
+
+  it('keeps an end-of-day deadline out of the next day', async () => {
+    // A deadline stated as a date alone is 23:59 (spec §3.1). An hour starting there would run
+    // to 00:59 and show up on tomorrow's page — the day after the one it is due.
+    getInterview.mockResolvedValue({
+      ...round,
+      roundType: 'take-home',
+      datetime: '2026-09-11T23:59:00.000Z',
+    })
+    const body = await (await ICS(req(), icsCtx)).text()
+    expect(body).toContain('DTSTART:20260911T225900Z')
+    expect(body).toContain('DTEND:20260911T235900Z')
+  })
+
   it('returns the guard verbatim and never reads the round when unauthenticated', async () => {
     requireUser.mockResolvedValue(new Response('{"error":"unauthenticated"}', { status: 401 }))
     expect((await ICS(req(), icsCtx)).status).toBe(401)

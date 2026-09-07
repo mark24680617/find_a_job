@@ -21,12 +21,17 @@ import { summarizeFacts } from '@/ai/prompts/jobInterpret'
 // fails if a prompt drifts from one.
 
 const INTERPRET_VERBATIM = `You interpret an interview notice (email text or screenshot).
-- roundType: recruiter-screen | technical | system-design | behavioral | panel | onsite | other.
+- roundType: recruiter-screen | technical | system-design | behavioral | panel | onsite | take-home | other.
   Judge from the notice's own words (who, how long, "coding", "values", "meet the team").
+  A notice that hands over an assignment to complete on the candidate's own time is take-home;
+  its datetime is the deadline, if stated.
 - datetime: ISO 8601 with timezone if the notice states one, else null. Never guess a date.
+  A deadline given as a date without a time is the end of that day (23:59) in the zone the
+  notice states; with no zone stated, null.
 - people: names/titles of interviewers if stated.
 - askHuman: what the notice does not say that preparation needs (round number? recruiter
-  said what to expect? is there a take-home?). Ask, do not guess.`
+  said what to expect? is there a take-home — or, for one, what is the deadline and what is to
+  be submitted?). Ask, do not guess.`
 
 const BRIEF_VERBATIM = `You write an interview prep brief for one round.
 Input: the round type, the parsed job (role facts, gates, themes), the candidate's facts.
@@ -116,6 +121,11 @@ const reported: ReportedQuestion[] = [
 
 const textOf = (parts: Part[]) => parts.map((p) => ('text' in p ? p.text : '')).join('\n')
 
+// The prompt wraps to fit the file; the rules it states do not wrap. Collapsing runs of
+// whitespace lets each new rule be pinned as the sentence it is, and the verbatim copy above
+// already holds the wrapping itself to account.
+const collapsed = (s: string) => s.replace(/\s+/g, ' ')
+
 describe('buildInterviewInterpretPrompt system text', () => {
   const system = () => buildInterviewInterpretPrompt({ noticeText: NOTICE }).system
 
@@ -125,7 +135,16 @@ describe('buildInterviewInterpretPrompt system text', () => {
 
   it('names every round type in the taxonomy the record stores', () => {
     const s = system()
-    for (const type of ['recruiter-screen', 'technical', 'system-design', 'behavioral', 'panel', 'onsite', 'other']) {
+    for (const type of [
+      'recruiter-screen',
+      'technical',
+      'system-design',
+      'behavioral',
+      'panel',
+      'onsite',
+      'take-home',
+      'other',
+    ]) {
       expect(s).toContain(type)
     }
   })
@@ -134,6 +153,29 @@ describe('buildInterviewInterpretPrompt system text', () => {
     const s = system()
     expect(s).toContain('Never guess a date')
     expect(s).toContain('Ask, do not guess')
+  })
+
+  it('says what a take-home notice looks like, and that its datetime is the deadline', () => {
+    expect(collapsed(system())).toContain(
+      "A notice that hands over an assignment to complete on the candidate's own time is " +
+        'take-home; its datetime is the deadline, if stated.',
+    )
+  })
+
+  it('states the one convention a deadline follows, and still refuses to invent a zone', () => {
+    // "by Friday 12 September" is what a take-home notice actually says. The end of that day is
+    // a convention, not a guess — but only once the notice has told us which day it is the end
+    // of, which is why the no-zone case stays null rather than defaulting to the server's.
+    expect(collapsed(system())).toContain(
+      'A deadline given as a date without a time is the end of that day (23:59) in the zone ' +
+        'the notice states; with no zone stated, null.',
+    )
+  })
+
+  it('asks the two things a take-home notice most often leaves out', () => {
+    expect(collapsed(system())).toContain(
+      'is there a take-home — or, for one, what is the deadline and what is to be submitted?',
+    )
   })
 
   it('is the same text whatever the notice is', () => {

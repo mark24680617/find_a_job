@@ -200,8 +200,17 @@ const pathOf = (url: string) => {
  * would have sent. Recency is one point, not a gate: an old thread about the right company
  * still beats a new one about nothing in particular. The known prep aggregators are docked,
  * for the reason given above their list.
+ *
+ * `titleTerm` is the word the run is looking for. It defaults to the process map's, and a
+ * take-home run passes its own: reading down a list ranked for "interview" would spend the
+ * twelve reads on loop write-ups and never reach the assignment.
  */
-export function rankGuides(sources: ResearchSource[], company: string, researchedAt: string): ResearchSource[] {
+export function rankGuides(
+  sources: ResearchSource[],
+  company: string,
+  researchedAt: string,
+  titleTerm: RegExp = /interview/i,
+): ResearchSource[] {
   const c = company.toLowerCase()
   const now = Date.parse(researchedAt)
   const score = (s: ResearchSource) => {
@@ -213,7 +222,7 @@ export function rankGuides(sources: ResearchSource[], company: string, researche
     // much as a guide: an engineering blog post about how the team hires outranks a bare
     // domain that only happens to carry the company's name.
     if (s.kind === 'community' || s.kind === 'guide' || s.kind === 'company') n += 3
-    if (/interview/i.test(s.title)) n += 2
+    if (titleTerm.test(s.title)) n += 2
     if (s.title.toLowerCase().includes(c) || s.snippet.toLowerCase().includes(c)) n += 2
     if (under(s.host, 'reddit.com') && s.title.toLowerCase().includes(c)) n += 3
     const at = Date.parse(s.publishedAt ?? '')

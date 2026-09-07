@@ -186,6 +186,17 @@ describe('rankGuides', () => {
     )
     expect(ranked.map((r) => r.id)).toEqual(['blog', 'aggregator'])
   })
+  it('scores the title term it was given, and not the word it falls back to', () => {
+    const two = () => [
+      s({ id: 'interview', host: 'a.example.com', title: 'Marram Systems interview process' }),
+      s({ id: 'takehome', host: 'b.example.com', title: 'Marram Systems take-home assignment' }),
+    ]
+    const at = '2026-09-02T00:00:00.000Z'
+    expect(rankGuides(two(), 'Marram Systems', at).map((r) => r.id)).toEqual(['interview', 'takehome'])
+    expect(
+      rankGuides(two(), 'Marram Systems', at, /take[- ]?home|assignment|exercise/i).map((r) => r.id),
+    ).toEqual(['takehome', 'interview'])
+  })
   it('does not mutate its input', () => {
     const input = [s({ id: 'a' }), s({ id: 'b', kind: 'community' })]
     rankGuides(input, 'X', '2026-09-02T00:00:00.000Z')

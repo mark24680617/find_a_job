@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { detectAdapter, fetchPosting } from '@/adapters'
 import { FetchBlockedError } from '@/adapters/types'
 import { htmlToText } from '@/adapters/html'
-import { assertReachableAddress } from '@/adapters/http'
+import { assertReachableAddress, getGuardedText } from '@/adapters/http'
 import { ashbySlugCandidates, parseAshby } from '@/adapters/ashby'
 import { parseGreenhouse } from '@/adapters/greenhouse'
 import { parseLever } from '@/adapters/lever'
@@ -331,5 +331,39 @@ describe('generic fetch address guard', () => {
       'https://careers.example.com/jobs/1',
       'https://careers.example.com/jobs/1/',
     ])
+  })
+})
+
+describe('getGuardedText', () => {
+  it('reports the content type the response carried', async () => {
+    stubFetch(
+      () =>
+        new Response('%PDF-1.7 …', {
+          status: 200,
+          headers: { 'content-type': 'application/pdf' },
+        }),
+    )
+
+    await expect(getGuardedText(new URL('https://example.com/brief'))).resolves.toEqual({
+      status: 200,
+      text: '%PDF-1.7 …',
+      contentType: 'application/pdf',
+    })
+  })
+
+  it('reports an empty content type when the response carried none', async () => {
+    stubFetch(() => {
+      const res = new Response('Build a scheduler.', { status: 200 })
+      // Node stamps `text/plain;charset=UTF-8` on a string body; plenty of real servers send
+      // no type at all, and the caller has to be able to tell that apart from a claim.
+      res.headers.delete('content-type')
+      return res
+    })
+
+    await expect(getGuardedText(new URL('https://example.com/brief'))).resolves.toEqual({
+      status: 200,
+      text: 'Build a scheduler.',
+      contentType: '',
+    })
   })
 })

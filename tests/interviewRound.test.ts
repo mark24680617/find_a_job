@@ -8,6 +8,7 @@ vi.mock('@/lib/firebase/client', () => ({ auth: {} }))
 
 import { BriefView } from '@/components/interviews/BriefView'
 import { RoundCard } from '@/components/interviews/RoundCard'
+import { formatWhen } from '@/lib/rounds'
 import type { InterviewRound, PrepBrief } from '@/lib/types'
 
 const brief: PrepBrief = {
@@ -69,6 +70,27 @@ describe('RoundCard', () => {
 
   it('offers the calendar export when there is a time to export', () => {
     expect(html()).toContain('Add to calendar')
+  })
+
+  // A take-home arrives with a deadline, not an appointment. Same slot, same button, one word of
+  // difference — and that word is the whole difference between somewhere to be and something to
+  // have finished. The formatted time is the reader's locale's, so it is built here the same way
+  // the card builds it rather than written out.
+  it('calls a take-home’s time the deadline it is', () => {
+    const out = html({ roundType: 'take-home', prepBrief: undefined })
+    expect(out).toContain(`Due ${formatWhen('2026-09-03T21:00:00.000Z')}`)
+    expect(out).toContain('>Take-home</a>')
+    expect(out).toContain('aria-label="Open Take-home round, ')
+    expect(out).toContain('aria-label="Add to calendar: Take-home"')
+  })
+
+  it('says the deadline was never stated, and offers no calendar entry for one', () => {
+    const out = html({ roundType: 'take-home', datetime: undefined, prepBrief: undefined })
+    expect(out).toContain('Deadline not stated')
+    expect(out).not.toContain('Time not stated')
+    // Nothing parsed, so there is nothing to put in a calendar. The guard is the one every round
+    // type has always had — the word above it changed, the rule did not.
+    expect(out).not.toContain('Add to calendar')
   })
 
   it('shows what the notice did not say, with why it is being asked', () => {

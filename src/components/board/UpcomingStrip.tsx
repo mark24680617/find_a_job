@@ -14,6 +14,11 @@ import type { Application, InterviewRound } from '@/lib/types'
  * disappears entirely when there are none — an empty "Upcoming" heading is a promise the
  * product has not kept yet, and most people here have no rounds booked at all.
  *
+ * A take-home is on the list too, when its notice stated a deadline, and its row says "Due" —
+ * the same word the card and the round page use, so a date to have finished by never reads as
+ * somewhere to be. One whose notice stated no deadline is not here at all: the filter below
+ * keeps only rounds with a readable time, which is the honest answer for both kinds of round.
+ *
  * "Add to calendar" hands the event to whatever the person actually lives in. It downloads
  * rather than links out: the round belongs to them, and a calendar entry read on a phone at
  * the wrong moment is the failure this is here to prevent.
@@ -59,6 +64,8 @@ function Row({ item: { app, round } }: { item: UpcomingRound }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  const when = formatWhen(round.datetime)
+
   async function download() {
     setBusy(true)
     setError('')
@@ -76,7 +83,7 @@ function Row({ item: { app, round } }: { item: UpcomingRound }) {
   return (
     <li className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-line py-3">
       <time dateTime={round.datetime} className="tnum text-[0.9375rem] text-ink">
-        {formatWhen(round.datetime)}
+        {round.roundType === 'take-home' ? `Due ${when}` : when}
       </time>
 
       <p className="text-[0.9375rem] text-ink-2">

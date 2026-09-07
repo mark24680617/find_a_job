@@ -41,6 +41,13 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     getInterview(user.uid, id, rid),
   ])
   if (!app || !round) return Response.json({ error: 'not found' }, { status: 404 })
+  // A take-home hands over an assignment; there is no conversation to prepare for, and a brief
+  // written for one would be four sections of advice about a discussion that is not going to
+  // happen. Refused here, before the profile is read and before any model call, so the answer
+  // costs nothing — the mirror of the 400 the take-home route gives every other round type.
+  if (round.roundType === 'take-home') {
+    return Response.json({ error: 'a take-home round has no brief' }, { status: 400 })
+  }
   // The same refusal logging makes: the topics, the questions to ask and the red flags all come
   // out of the parsed posting, so without one there is no company to prepare for.
   if (!app.parsed) {

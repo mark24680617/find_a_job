@@ -14,6 +14,8 @@
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts process "<company>" "<role>"
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts brief <process-transcript.txt> [stageOrder]
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts mock <process-transcript.txt> [stageOrder]
+ * npx tsx --env-file=.env.local scripts/smoke-flows.ts take-home "<company>" "<role>" <brief.txt>
+ * npx tsx --env-file=.env.local scripts/smoke-flows.ts assignment <file.pdf>
  *
  * This spends a real API call, so it is a thing you run deliberately — the unit suite
  * never touches the network. `--env-file` is what supplies GEMINI_API_KEY.
@@ -33,9 +35,11 @@ import { runReconcileFacts } from '../src/ai/flows/reconcileFacts'
 import { runPrepBrief } from '../src/ai/flows/prepBrief'
 import { runMockTurn } from '../src/ai/flows/mockTurn'
 import { runMockDebrief } from '../src/ai/flows/mockDebrief'
+import { runAssignmentTranscribe } from '../src/ai/flows/assignmentTranscribe'
 import { describeStage } from '../src/ai/prompts/mockTurn'
 import { mergeStory } from '../src/lib/profileMerge'
 import { researchProcess, type GatherTrace } from '../src/lib/research/pipeline'
+import { researchTakeHome } from '../src/lib/research/takeHome'
 import {
   placeRound,
   practiceMode,
@@ -45,6 +49,7 @@ import {
 } from '../src/lib/practice'
 import { normalizeWs } from '../src/lib/research/quotes'
 import { roleFamily } from '../src/lib/research/roleFamily'
+import { cutBrief, MAX_PDF_BYTES, MIN_BRIEF_CHARS } from '../src/lib/assignment'
 import type {
   AnswerDraftOut,
   ClarifyDraftOut,
@@ -59,6 +64,7 @@ import type {
 } from '../src/ai/schemas'
 import { countUnits } from '../src/lib/countText'
 import type {
+  Cited,
   ClarifyAnswer,
   Fact,
   InterviewRound,
@@ -70,7 +76,9 @@ import type {
   ProcessStage,
   Profile,
   Question,
+  Quoted,
   RoundType,
+  TakeHomeGuide,
 } from '../src/lib/types'
 
 const collapse = (s: string) => s.replace(/\s+/g, ' ').trim()
@@ -940,10 +948,15 @@ function setUpRound(file: string, stageOrder: number): SmokeRound {
   const [, company, role] = header
   const stage = map.stages.find((s) => s.order === stageOrder)
   if (!stage) throw new Error(`${file}: no stage ${stageOrder} — the map has ${map.stages.length}`)
-  // A take-home is a stage but not a round type: there is no notice to log for it, and the
-  // product would never place a round there. Refused rather than typed 'other' quietly.
+  // A take-home round exists now, but it is not practised: the round page mounts no Practice
+  // section for one and the mock route refuses it, so `brief` and `mock` have nothing to run
+  // against this stage. The throw stays for that product reason rather than the type one it
+  // used to carry — RoundType and StageKind now have the same members, so `stage.kind` is
+  // assignable on the next line whether this narrowing happens or not.
   if (stage.kind === 'take-home') {
-    throw new Error(`stage ${stageOrder} is the take-home — no round is ever of that kind`)
+    throw new Error(
+      `stage ${stageOrder} is the take-home — a take-home round is not practised; use smoke-flows take-home`,
+    )
   }
   const roundType: RoundType = stage.kind
 
@@ -1211,6 +1224,188 @@ async function smokeMock(file: string, stageOrder: number): Promise<void> {
   reportMock(transcript, debrief, mode, TOM_FACTS, reported)
 }
 
+
+// ---- take-home: a real company, a written brief, one plan ---------------------------------
+// One `researchTakeHome` run — the same function the route runs, with no round and no database
+// under it. The company and the role are real, because the half of the guide worth reading is the
+// half that comes off the open web. The brief is fictional in every run and always will be: a real
+// take-home is somebody's assignment, usually under an NDA, and nothing of the sort belongs in this
+// repository. That costs the run nothing, because the brief half of the guide is checked against
+// the brief itself — a fictional one checks exactly as well as a real one would.
+
+/**
+ * A `Quoted` beside the brief it claims to quote. The guard has already dropped every item whose
+ * quote did not check out, so a NOT here means the guard did not run, not that the model
+ * misbehaved. Whitespace is normalised on both sides, as the guard normalises it. This is the
+ * substring half of what the guard checks and not the whole of it — the guard also drops a quote
+ * longer than `QUOTE_CAP`, which is not re-checked here because a quote over the cap is gone from
+ * the guide before the smoke is handed one.
+ */
+function reportQuoted(label: string, items: Quoted[], brief: string): { ok: number; total: number } {
+  const haystack = normalizeWs(brief)
+  let ok = 0
+  console.log(`\n  ${label} (${items.length})`)
+  for (const item of items) {
+    const quote = normalizeWs(item.quote)
+    const verified = quote !== '' && haystack.includes(quote)
+    if (verified) ok += 1
+    console.log(`    - ${item.text}`)
+    console.log(`      ${verified ? 'the brief' : 'NOT IN THE BRIEF'}: ${JSON.stringify(item.quote)}`)
+  }
+  return { ok, total: items.length }
+}
+
+/**
+ * A `Cited` beside the sources it names. Two ways to fail: citing nobody, which makes a reported
+ * sentence somebody's opinion; and citing an id we never handed over, which is a citation the
+ * reader cannot follow. The guard drops the first and rejects the second, so both lines are its
+ * receipt.
+ */
+function reportCited(label: string, items: Cited[], hosts: Map<string, string>): { ok: number; total: number } {
+  let ok = 0
+  console.log(`\n  ${label} (${items.length})`)
+  for (const item of items) {
+    const known = item.sourceIds.length > 0 && item.sourceIds.every((id) => hosts.has(id))
+    if (known) ok += 1
+    console.log(`    - ${item.text}`)
+    console.log(
+      item.sourceIds.length === 0
+        ? '      NOTHING CITED'
+        : `      ${item.sourceIds.map((id) => `${id} ${hosts.get(id) ?? 'NOT A SOURCE WE HANDED OVER'}`).join(', ')}`,
+    )
+  }
+  return { ok, total: items.length }
+}
+
+/**
+ * The guide as the round page would show it, in the page's own order: what the brief asks for,
+ * what people report, the plan, the questions for the recruiter, the caveats. The checks at the
+ * end are the mechanical half of the quality bar — the three kinds of sentence kept apart, each
+ * still carrying what it is supposed to carry. The other half is read by eye.
+ */
+function reportTakeHome(
+  guide: TakeHomeGuide,
+  brief: string,
+  reads: { attempted: number; landed: number },
+): void {
+  console.log(`\nsources (${guide.sources.length})`)
+  const hosts = new Map(guide.sources.map((s) => [s.id, s.host]))
+  for (const s of guide.sources) {
+    console.log(`  ${s.id}  ${s.host}  ${s.kind}  ${s.fetched ? 'fetched' : 'link'}  ${s.title}`)
+  }
+
+  console.log(`\nwrite-ups digested (${guide.guides.length})`)
+  for (const g of guide.guides) {
+    console.log(`\n  ${g.sourceId}${g.firstHand ? '  (first-hand)' : ''}${g.stale ? '  (stale)' : ''}`)
+    for (const t of g.takeaways) console.log(`    - ${t}`)
+    for (const q of g.quotes) console.log(`    " ${q}`)
+  }
+  // The two numbers that say whether the write-up channel worked at all: how far down the ranked
+  // list the run had to go, and how much of it came back as something to digest.
+  console.log(`\nreads attempted: ${reads.attempted}, digests landed: ${reads.landed}`)
+
+  console.log('\n\n=== what the brief asks for ===')
+  console.log(`\n  task\n      ${guide.brief.task}`)
+  const quoted = [
+    reportQuoted('timeLimit', guide.brief.timeLimit ? [guide.brief.timeLimit] : [], brief),
+    reportQuoted('deliverables', guide.brief.deliverables, brief),
+    reportQuoted('constraints', guide.brief.constraints, brief),
+    reportQuoted('evaluation', guide.brief.evaluation, brief),
+  ]
+
+  console.log('\n\n=== what people report ===')
+  const cited = [
+    reportCited('tasks', guide.reported.tasks, hosts),
+    reportCited('evaluation', guide.reported.evaluation, hosts),
+    reportCited('pitfalls', guide.reported.pitfalls, hosts),
+    reportCited('time', guide.reported.time, hosts),
+  ]
+
+  console.log(`\n\n=== the plan (${guide.plan.length} steps, suggested — cites nothing) ===`)
+  guide.plan.forEach((step, i) => {
+    console.log(`  ${i + 1}. ${step.step}${step.budget ? `   [${step.budget}]` : ''}`)
+  })
+
+  console.log(`\naskRecruiter (${guide.askRecruiter.length})`)
+  for (const a of guide.askRecruiter) console.log(`  - ${a}`)
+
+  console.log(`\ncaveats (${guide.caveats.length})`)
+  for (const c of guide.caveats) console.log(`  - ${c}`)
+
+  const sum = (rows: { ok: number; total: number }[], key: 'ok' | 'total') =>
+    rows.reduce((n, row) => n + row[key], 0)
+  const budgeted = guide.plan.filter((s) => s.budget).length
+
+  console.log('\nchecks')
+  console.log(`  brief items whose quote is really in the brief: ${sum(quoted, 'ok')}/${sum(quoted, 'total')}`)
+  console.log(`  reported items citing only sources we handed over: ${sum(cited, 'ok')}/${sum(cited, 'total')}`)
+  console.log(`  brief.task written: ${guide.brief.task.trim() ? 'ok' : 'EMPTY'}`)
+  console.log(`  plan steps within the cap of 12: ${guide.plan.length <= 12 ? 'ok' : `FAILED (${guide.plan.length})`}`)
+  console.log(`  plan steps carrying a budget: ${budgeted}/${guide.plan.length}`)
+  console.log(`  grounded: ${guide.grounded ? 'yes' : 'no — drawn from the brief alone'}`)
+  console.log(`  planned from ${guide.plannedFrom} at ${guide.plannedAt}`)
+}
+
+/**
+ * The whole take-home research run, for a company, a role and a brief named on the command line.
+ * Expensive twice over, like the process map it borrows its pipeline from: four grounded calls, up
+ * to twelve live reads, six digests and one synthesis, about a minute. Run it deliberately, and
+ * read what it prints against what the guide claims.
+ */
+async function smokeTakeHome(company: string, role: string, file: string): Promise<void> {
+  // The route hands `researchTakeHome` whatever `briefInUse` gives it: cut at MAX_BRIEF_CHARS, and
+  // refused under MIN_BRIEF_CHARS before the run is started at all. There is no route here, so the
+  // smoke applies both itself — and it must, because the quotes are checked against the text that
+  // was actually sent. Checking them against the file instead would call a perfectly good quote a
+  // fabrication the moment a brief is long enough to be cut.
+  const { text: brief, cut } = cutBrief(readFileSync(file, 'utf8'))
+  if (brief.length < MIN_BRIEF_CHARS) {
+    throw new Error(
+      `${file}: ${brief.length} characters — the product refuses anything under ${MIN_BRIEF_CHARS}`,
+    )
+  }
+
+  console.log(`take-home: ${company} — ${role}`)
+  console.log(`  brief: ${file} (${brief.length} characters${cut ? ', cut' : ''})`)
+  // The posting the route would have parsed, reduced to the two fields the research uses — the
+  // same minimal ParsedJob smokeProcess builds, for the same reason.
+  const parsed: ParsedJob = {
+    company, role, roleFacts: [], gates: [], themes: [], scope: 'per-application', advisory: '',
+  }
+  let reads = { attempted: 0, landed: 0 }
+  const guide = await researchTakeHome({
+    company, role, parsed, brief,
+    // Nothing has been added to the round, so the notice is the brief: 'notice' is the identity the
+    // route would have handed over, and the one the 409 re-read would compare against.
+    plannedFrom: 'notice',
+    onGathers: reportGathers,
+    onReads: (counts) => { reads = counts },
+  })
+  reportTakeHome(guide, brief, reads)
+}
+
+/**
+ * The PDF road, on a file rather than through the route: read the bytes, base64 them as the
+ * profile page's FileReader does, and print what the model read back. The character count is the
+ * number the route's one length rule acts on; forty lines is enough to see whether the order
+ * survived and the numbers came through. A transcription is the model's reading of the file, so
+ * this is the run where that reading is checked against the document by eye.
+ */
+async function smokeAssignment(file: string): Promise<void> {
+  const bytes = readFileSync(file)
+  if (bytes.length > MAX_PDF_BYTES) {
+    throw new Error(`${file}: ${bytes.length} bytes — the route answers 413 over ${MAX_PDF_BYTES}`)
+  }
+  console.log(`assignment: ${file} (${bytes.length} bytes)`)
+
+  const { text } = await runAssignmentTranscribe({ pdfBase64: bytes.toString('base64') })
+  const lines = text.split('\n')
+  console.log(`\ntranscribed: ${text.length} characters, ${lines.length} lines`)
+  console.log(`\nfirst ${Math.min(40, lines.length)} lines`)
+  for (const line of lines.slice(0, 40)) console.log(`  ${line}`)
+  if (lines.length > 40) console.log(`  … ${lines.length - 40} more lines`)
+}
+
 /**
  * The third positional: which stage of the saved loop to practise, 1 when it is absent. A typo
  * throws rather than falling back — practising stage 1 and filing it as stage 11 is the one
@@ -1229,7 +1424,9 @@ async function main(): Promise<void> {
   // The second positional is a file for `profileIngest` and a mode for `formParse`; the
   // `process` mode reads it as the company, and takes the role from a third. `brief` and `mock`
   // read it as a saved `process` transcript, and the third as the stage of that loop to run.
-  const [flow, file, role] = process.argv.slice(2)
+  // `take-home` reads the first two as `process` does and takes the brief from a fourth;
+  // `assignment` reads the second as a PDF.
+  const [flow, file, role, brief] = process.argv.slice(2)
   if (flow === 'profileIngest' && file) return smokeProfileIngest(file)
   if (flow === 'jobInterpret') return smokeJobInterpret()
   if (flow === 'formParse' && (file === 'text' || file === 'image')) return smokeFormParse(file)
@@ -1242,12 +1439,15 @@ async function main(): Promise<void> {
   if (flow === 'process' && file && role) return smokeProcess(file, role)
   if (flow === 'brief' && file) return smokeBrief(file, stageOrderArg(role))
   if (flow === 'mock' && file) return smokeMock(file, stageOrderArg(role))
+  if (flow === 'take-home' && file && role && brief) return smokeTakeHome(file, role, brief)
+  if (flow === 'assignment' && file) return smokeAssignment(file)
 
   console.error(
     'usage: tsx scripts/smoke-flows.ts profileIngest <file> | jobInterpret |' +
       ' formParse text|image | answerDraft | clarifyDraft | feedbackDistill | story |' +
       ' interview | reconcile | process "<company>" "<role>" |' +
-      ' brief <transcript> [stageOrder] | mock <transcript> [stageOrder]',
+      ' brief <transcript> [stageOrder] | mock <transcript> [stageOrder] |' +
+      ' take-home "<company>" "<role>" <brief.txt> | assignment <file.pdf>',
   )
   process.exitCode = 1
 }

@@ -133,6 +133,12 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     getInterview(user.uid, id, rid),
   ])
   if (!app || !round) return bad('not found', 404)
+  // Nobody practises a take-home: it is done once, on the candidate's own time, and what helps
+  // is a plan for it rather than six questions about it. Refused before the profile is read and
+  // before any model call, and before the `parsed` check below, because the round type settles
+  // it whatever else is true of the application. `practiceMode` would answer `conversation` for
+  // one, which is why this is a guard and not a mode.
+  if (round.roundType === 'take-home') return bad('a take-home round is not practised')
   // Every action, `added` among them. Three of them end in a prompt built around the posting —
   // without it there is no company to be interviewed by, only a round type — and a round under
   // an uninterpreted posting has no mock for `added` to mark a claim on. Refused rather than run

@@ -14,7 +14,9 @@ import type { InterviewRound, ResearchSource } from '@/lib/types'
  * A round whose notice never stated a time says so rather than showing a blank: "time not
  * stated" is a fact about the notice, and the agent is not allowed to guess one. That is also
  * why the calendar export disappears there — there is nothing to put in a calendar, and a
- * button that can only fail is worse than no button.
+ * button that can only fail is worse than no button. A take-home's time is a deadline rather
+ * than an appointment, so the same slot reads "Due" and the same absence reads "Deadline not
+ * stated"; the word changes, the button's rule does not.
  *
  * What the notice did not say is shown amber, display-only. Answering those is roadmap; today
  * they are here because knowing what you still have to find out is most of the preparation.
@@ -34,6 +36,10 @@ export function RoundCard({ appId, round, briefFailed = false, sources }: Props)
   const [error, setError] = useState('')
 
   const when = formatWhen(round.datetime)
+  // Read once here rather than at each of the two places below that need it. Nothing else on
+  // this card changes for a take-home: the chip already says "Take-home" through ROUND_LABEL,
+  // and the export is offered on exactly the condition it always was.
+  const takeHome = round.roundType === 'take-home'
   const asks = round.askHuman ?? []
 
   async function download() {
@@ -68,10 +74,12 @@ export function RoundCard({ appId, round, briefFailed = false, sources }: Props)
         </Link>
         {when ? (
           <time dateTime={round.datetime} className="tnum text-[0.9375rem] text-ink">
-            {when}
+            {takeHome ? `Due ${when}` : when}
           </time>
         ) : (
-          <span className="text-[0.9375rem] text-ink-3">Time not stated</span>
+          <span className="text-[0.9375rem] text-ink-3">
+            {takeHome ? 'Deadline not stated' : 'Time not stated'}
+          </span>
         )}
         {when && (
           <button

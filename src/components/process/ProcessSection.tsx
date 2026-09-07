@@ -29,6 +29,16 @@ const STAGES = [
 ]
 const NOTE = 'Usually takes 30–90 seconds.'
 
+/**
+ * The tail of the dated line. A map the search came back empty from says so in words rather than
+ * counting to nothing, and where this says `without sources` the `All {n} sources` disclosure at
+ * the foot is not rendered at all: a disclosure that opens on an empty list promises evidence
+ * there is none of. The plan section says it the same way, of the same empty search.
+ */
+function fromSources(n: number): string {
+  return n === 0 ? 'without sources' : `from ${n} ${n === 1 ? 'source' : 'sources'}`
+}
+
 interface Props {
   app: Application
   /** The rounds logged against this application, owned by the page. Pinned onto the ledger. */
@@ -102,8 +112,7 @@ export function ProcessSection({ app, rounds, onResearched }: Props) {
               </p>
             )}
             <p>
-              Researched {dateOnly(map.researchedAt)} from {map.sources.length}{' '}
-              {map.sources.length === 1 ? 'source' : 'sources'}
+              Researched {dateOnly(map.researchedAt)} {fromSources(map.sources.length)}
               {map.timeline && <> · {map.timeline}</>}
               {' · '}
               <button type="button" className="btn-link" onClick={() => void research()}>
@@ -183,12 +192,14 @@ export function ProcessSection({ app, rounds, onResearched }: Props) {
                 ))}
               </ul>
             )}
-            <details className="faq mt-3">
-              <summary className="btn-link inline cursor-pointer">All {map.sources.length} sources</summary>
-              <div className="mt-2">
-                <SourceList sources={map.sources} />
-              </div>
-            </details>
+            {map.sources.length > 0 && (
+              <details className="faq mt-3">
+                <summary className="btn-link inline cursor-pointer">All {map.sources.length} sources</summary>
+                <div className="mt-2">
+                  <SourceList sources={map.sources} />
+                </div>
+              </details>
+            )}
           </div>
         </div>
       )}

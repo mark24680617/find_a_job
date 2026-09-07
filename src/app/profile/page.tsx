@@ -9,6 +9,7 @@ import { ReconcilePanel } from '@/components/profile/ReconcilePanel'
 import { StandardAnswers } from '@/components/profile/StandardAnswers'
 import { VoiceRules } from '@/components/profile/VoiceRules'
 import { apiFetch } from '@/lib/apiFetch'
+import { MAX_PDF_BYTES } from '@/lib/assignment'
 import { factFromGapAnswer, visibleGaps } from '@/lib/profileView'
 import { readable } from '@/lib/readable'
 import type { Changeset, ClarifyAnswer, ClarifyQuestion, Profile } from '@/lib/types'
@@ -38,9 +39,6 @@ import type { Changeset, ClarifyAnswer, ClarifyQuestion, Profile } from '@/lib/t
  * And every way out of the page — the nav, Sign out, closing the tab — is guarded by the shell
  * once `useUnsavedChanges` reports that there is something to lose.
  */
-
-/** Bytes of PDF we will turn into base64 and post. Comfortably inside the model's inline limit. */
-const MAX_PDF_BYTES = 6 * 1024 * 1024
 
 const SECTION_GAP = 'mt-14'
 

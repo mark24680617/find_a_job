@@ -10,6 +10,7 @@
 import { z } from 'genkit'
 import type {
   ArtifactScope,
+  Assignment,
   Changeset,
   Citation,
   ClarifyOption,
@@ -26,6 +27,7 @@ import type {
   QConstraints,
   Question,
   RoundType,
+  TakeHomeGuide,
   VoiceRule,
 } from '@/lib/types'
 
@@ -41,6 +43,7 @@ const RoundTypeSchema = z.enum([
   'behavioral',
   'panel',
   'onsite',
+  'take-home',
   'other',
 ])
 
@@ -230,6 +233,15 @@ export const MockDebriefOutSchema = z.object({
   rehearse: z.array(z.string()),
 })
 
+/**
+ * assignmentTranscribe: a PDF in, its text out. One field, because that is the whole job — the
+ * model is reading a document out, not judging it, and a second field would be a judgment.
+ * Nothing bounds the length: whether a transcription is long enough to plan from is the
+ * assignment route's one rule, applied to a paste, a link and a PDF alike, and a floor here
+ * would be that same rule said differently for one of the three.
+ */
+export const AssignmentTranscribeOutSchema = z.object({ text: z.string() })
+
 export type ProfileIngestOut = z.infer<typeof ProfileIngestOutSchema>
 export type JobInterpretOut = z.infer<typeof JobInterpretOutSchema>
 export type FormParseOut = z.infer<typeof FormParseOutSchema>
@@ -241,6 +253,7 @@ export type InterviewInterpretOut = z.infer<typeof InterviewInterpretOutSchema>
 export type PrepBriefOut = z.infer<typeof PrepBriefOutSchema>
 export type MockTurnOut = z.infer<typeof MockTurnOutSchema>
 export type MockDebriefOut = z.infer<typeof MockDebriefOutSchema>
+export type AssignmentTranscribeOut = z.infer<typeof AssignmentTranscribeOutSchema>
 
 /** `true` only when the two types are assignable in both directions. */
 type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
@@ -286,6 +299,20 @@ export type SchemaGuards = [
   Assert<Mutual<MockTurnOut['kind'], Exclude<NonNullable<MockTurn['kind']>, 'closing'>>>,
   Assert<Mutual<Omit<MockDebriefOut, 'code'>, Omit<MockDebrief, 'code' | 'factsChecked'>>>,
   Assert<Mutual<NonNullable<MockDebriefOut['code']>, NonNullable<MockDebrief['code']>>>,
+  // The transcription is the `text` of a stored Assignment and nothing else. `source`, `url`,
+  // `addedAt` and `cut` are the route's to write, because they are facts about how the brief
+  // arrived rather than anything the model read in it.
+  Assert<Mutual<AssignmentTranscribeOut, Pick<Assignment, 'text'>>>,
+  // The guide's output and its record differ in exactly two places, and both are named here
+  // rather than waved through: `timeLimit` and a step's `budget` are nullable on the wire
+  // because Gemini's structured output returns `null` and not absence, and optional on the
+  // record because a stored `null` would put an empty quotation on screen. Everything else
+  // stays pinned in both directions, so a field added to the guide and forgotten in the schema
+  // is a build failure. `plan` and `brief` are split out only to say those two things.
+  Assert<Mutual<Omit<TakeHomeSynthesizeOut, 'plan' | 'brief'>, Pick<TakeHomeGuide, 'reported' | 'askRecruiter' | 'caveats'>>>,
+  Assert<Mutual<Omit<TakeHomeSynthesizeOut['brief'], 'timeLimit'>, Omit<TakeHomeGuide['brief'], 'timeLimit'>>>,
+  Assert<Mutual<TakeHomeSynthesizeOut['brief']['timeLimit'], NonNullable<TakeHomeGuide['brief']['timeLimit']> | null>>,
+  Assert<Mutual<TakeHomeSynthesizeOut['plan'][number], Omit<TakeHomeGuide['plan'][number], 'budget'> & { budget: string | null }>>,
 ]
 
 /**
@@ -336,3 +363,59 @@ export const ProcessSynthesizeOutSchema = z.object({
   caveats: z.array(z.string()),
 })
 export type ProcessSynthesizeOut = z.infer<typeof ProcessSynthesizeOutSchema>
+
+/**
+ * takeHomeDigest: one write-up about a company's take-home in, what it says out. More
+ * structured than `ProcessDigestOutSchema` because the synthesis builds the reported half of a
+ * guide field by field from these. Like it, no mutual guard: the stored `TakeHomeDigest` keeps
+ * a strict subset of these fields plus two the run writes itself (`sourceId` and `stale`), and
+ * the schema only bounds the counts — the quotes are verified against the text in the flow.
+ */
+export const TakeHomeDigestOutSchema = z.object({
+  task: z.string(),
+  timeGiven: z.string(),
+  deliverables: z.array(z.string()),
+  evaluation: z.array(z.string()),
+  pitfalls: z.array(z.string()),
+  takeaways: z.array(z.string()).max(5),
+  quotes: z.array(z.string()).max(3),
+  publishedAt: z.string().nullable(),
+  firstHand: z.boolean(),
+})
+export type TakeHomeDigestOut = z.infer<typeof TakeHomeDigestOutSchema>
+
+/**
+ * The two shapes that keep a guide's sentences apart, and the reason this feature can be
+ * checked at all: a `Quoted` carries a verbatim span of the brief, a `Cited` carries the source
+ * ids that say it. Neither is exported — nothing outside this file builds one, and the stored
+ * `Quoted`/`Cited` in `src/lib/types.ts` are what the rest of the product reads.
+ */
+const QuotedSchema = z.object({ text: z.string(), quote: z.string() })
+const CitedSchema = z.object({ text: z.string(), sourceIds: z.array(z.string()) })
+
+/**
+ * takeHomeSynthesize: the brief and the evidence in, the guide out. Nullable rather than
+ * optional for the two fields the model may leave out, for the reason `ProcessSynthesizeOut`
+ * gives. The plan is uncapped here on purpose: twelve is a judgment about how long a plan may
+ * be, not a shape, and `guardTakeHomeGuide` is where it is made — as a rejection the model gets
+ * told about, rather than a validation error it only sees as "Invalid".
+ */
+export const TakeHomeSynthesizeOutSchema = z.object({
+  brief: z.object({
+    task: z.string(),
+    timeLimit: QuotedSchema.nullable(),
+    deliverables: z.array(QuotedSchema),
+    constraints: z.array(QuotedSchema),
+    evaluation: z.array(QuotedSchema),
+  }),
+  reported: z.object({
+    tasks: z.array(CitedSchema),
+    evaluation: z.array(CitedSchema),
+    pitfalls: z.array(CitedSchema),
+    time: z.array(CitedSchema),
+  }),
+  plan: z.array(z.object({ step: z.string(), budget: z.string().nullable() })),
+  askRecruiter: z.array(z.string()),
+  caveats: z.array(z.string()),
+})
+export type TakeHomeSynthesizeOut = z.infer<typeof TakeHomeSynthesizeOutSchema>

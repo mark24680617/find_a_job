@@ -413,3 +413,46 @@ describe('POST /api/applications/[id]/interviews — the brief written from the 
     expect('basis' in written.prepBrief).toBe(false)
   })
 })
+
+describe('POST /api/applications/[id]/interviews — a take-home round', () => {
+  it('writes no brief for one: no profile read, no flow, and no briefFailed in the answer', async () => {
+    // A take-home is not a conversation to rehearse for. The round is logged exactly as any
+    // other is — the deadline is its time — and what follows is an assignment to read, which
+    // is the take-home route's job and nobody's until the candidate asks for it.
+    runInterviewInterpret.mockResolvedValue({
+      roundType: 'take-home',
+      datetime: '2026-09-11T23:59:00.000Z',
+      people: [],
+      askHuman: [{ question: 'What should we submit?', why: 'The notice does not say.' }],
+    })
+    const takeHome: InterviewRound = {
+      id: 'r-1',
+      noticeRaw: NOTICE,
+      roundType: 'take-home',
+      datetime: '2026-09-11T23:59:00.000Z',
+      people: [],
+      askHuman: [{ question: 'What should we submit?', why: 'The notice does not say.' }],
+      chat: [],
+      createdAt: '2026-08-29T10:00:00.000Z',
+    }
+    getInterview.mockResolvedValue(takeHome)
+
+    const res = await post()
+    expect(res.status).toBe(200)
+    expect(runPrepBrief).not.toHaveBeenCalled()
+    expect(getProfile).not.toHaveBeenCalled()
+    expect(updateInterview).not.toHaveBeenCalled()
+    // No `briefFailed` either: nothing failed, and a flag saying so would put an error line on
+    // screen for a round that is working exactly as intended.
+    expect(await res.json()).toEqual({ round: takeHome })
+
+    // The round itself is written, and the timeline names what was added.
+    expect(createInterview).toHaveBeenCalledTimes(1)
+    expect(createInterview.mock.calls[0][2]).toMatchObject({
+      roundType: 'take-home',
+      datetime: '2026-09-11T23:59:00.000Z',
+    })
+    const patch = updateApplication.mock.calls[0][2] as Application
+    expect(patch.timeline[1].event).toBe('interview round added: take-home')
+  })
+})

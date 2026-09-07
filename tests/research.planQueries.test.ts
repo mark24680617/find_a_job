@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { planQueries } from '@/lib/research/planQueries'
+import { planQueries, planTakeHomeQueries } from '@/lib/research/planQueries'
 import { roleFamily } from '@/lib/research/roleFamily'
 
 // The queries are deterministic on purpose: the model decides what is relevant, not what to
@@ -38,5 +38,26 @@ describe('planQueries', () => {
   })
   it('strips quotes inside a company name rather than breaking the phrase', () => {
     expect(planQueries('Say "Hi" Inc', 'PM', 'product', 2026)[0].query).toBe('"Say Hi Inc" "PM" interview process')
+  })
+})
+
+describe('planTakeHomeQueries', () => {
+  const qs = planTakeHomeQueries('Marram Systems', 'software engineering', 2026)
+  it('plans exactly four, with stable ids and intents', () => {
+    expect(qs.map((q) => q.id)).toEqual(['q1', 'q2', 'q3', 'q4'])
+    expect(qs.map((q) => q.intent)).toEqual(['take-home', 'experience', 'feedback', 'guide'])
+  })
+  it('quotes the company so the search stays on this employer, not its product', () => {
+    expect(qs[0].query).toBe('"Marram Systems" take home assignment software engineering')
+    expect(qs[1].query).toBe('"Marram Systems" take-home interview experience')
+    // "take home" is quoted too: unquoted it drifts onto working from home.
+    expect(qs[2].query).toBe('"Marram Systems" "take home" feedback rejected')
+  })
+  it('keeps one query about the role family, dated, for a company nobody has written about', () => {
+    expect(qs[3].query).toBe('software engineering take home assignment what reviewers look for 2026')
+  })
+  it('strips quotes inside a company name rather than breaking the phrase', () => {
+    expect(planTakeHomeQueries('Say "Hi" Inc', 'product', 2026)[0].query)
+      .toBe('"Say Hi Inc" take home assignment product')
   })
 })

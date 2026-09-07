@@ -170,6 +170,19 @@ describe('POST /api/applications/[id]/interviews/[rid]/brief — the guards', ()
     expect(((await res.json()) as { error: string }).error).toMatch(/interpret the posting/i)
     expect(runPrepBrief).not.toHaveBeenCalled()
   })
+
+  it('refuses a take-home round — there is no conversation to prepare for', async () => {
+    getInterview.mockReset()
+    getInterview.mockResolvedValue({ ...round, roundType: 'take-home' })
+    const res = await post()
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'a take-home round has no brief' })
+    // Before the profile is read and before the flow: this is a shape of round the brief has
+    // nothing to say about, not a brief that could not be written.
+    expect(getProfile).not.toHaveBeenCalled()
+    expect(runPrepBrief).not.toHaveBeenCalled()
+    expect(updateInterview).not.toHaveBeenCalled()
+  })
 })
 
 describe('POST /api/applications/[id]/interviews/[rid]/brief — writing it', () => {

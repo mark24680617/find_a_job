@@ -35,7 +35,13 @@ const READ_FLOOR = 800
  */
 const FETCH_TIMEOUT_MS = 10_000
 
-const quoted = (company: string) => `"${company.replace(/"/g, '')}" interview`
+/**
+ * What both searches ask for: the company, always quoted — an unquoted "Stripe" or "Notion"
+ * drifts onto the product — and then whatever this run is about. `terms` is a whole run's
+ * subject, not an extra word: the process map wants the loop, the take-home run wants the
+ * assignment, and asking for both at once returns neither.
+ */
+const quoted = (company: string, terms = 'interview') => `"${company.replace(/"/g, '')}" ${terms}`
 
 interface RedditPost {
   title?: unknown
@@ -85,10 +91,10 @@ async function redditGet(url: string): Promise<{ status: number; json: unknown }
   }
 }
 
-export async function searchReddit(company: string): Promise<SourceCandidate[]> {
+export async function searchReddit(company: string, opts?: { terms?: string }): Promise<SourceCandidate[]> {
   // `raw_json=1` asks Reddit not to HTML-escape the body it returns, so a post reaches the
   // digest as the person wrote it rather than full of `&amp;`.
-  const url = `https://oauth.reddit.com/search?q=${encodeURIComponent(quoted(company))}&sort=relevance&t=all&limit=10&raw_json=1`
+  const url = `https://oauth.reddit.com/search?q=${encodeURIComponent(quoted(company, opts?.terms))}&sort=relevance&t=all&limit=10&raw_json=1`
   try {
     const res = await redditGet(url)
     if (!res || res.status !== 200) return []
@@ -137,8 +143,11 @@ const HN_UNREADABLE_HOSTS: readonly string[] = [
   'vercel.app', 'netlify.app', 'herokuapp.com', 'youtube.com', 'youtu.be', 'vimeo.com',
 ]
 
-export async function searchHackerNews(company: string): Promise<SourceCandidate[]> {
-  const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(quoted(company))}&tags=story&hitsPerPage=10`
+export async function searchHackerNews(
+  company: string,
+  opts?: { terms?: string; titlePattern?: RegExp },
+): Promise<SourceCandidate[]> {
+  const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(quoted(company, opts?.terms))}&tags=story&hitsPerPage=10`
   try {
     const { status, json } = await getJson(url)
     if (status !== 200) return []
@@ -148,8 +157,11 @@ export async function searchHackerNews(company: string): Promise<SourceCandidate
     for (const raw of hits) {
       const hit = asRecord(raw)
       if (!hit || typeof hit.title !== 'string' || typeof hit.objectID !== 'string') continue
-      // A story about the company's funding is not a story about its interviews.
-      if (!/interview/i.test(hit.title)) continue
+      // A story about the company's funding is not a story about its interviews. Which titles
+      // count is the run's to say: a take-home run keeps write-ups that never use the word
+      // "interview" and would otherwise lose exactly the ones it came for. The pattern is
+      // matched, never global — a `/g` regex would carry `lastIndex` from hit to hit.
+      if (!(opts?.titlePattern ?? /interview/i).test(hit.title)) continue
       if (PRESS_INTERVIEW.test(hit.title)) continue
       if (HN_SHOW.test(hit.title)) continue
       const publishedAt = typeof hit.created_at === 'string' ? { publishedAt: hit.created_at } : {}

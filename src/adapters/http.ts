@@ -20,6 +20,8 @@ interface Fetched {
   status: number
   body: unknown
   location: string | null
+  /** The `content-type` header, `''` when the server sent none. */
+  contentType: string
 }
 
 async function send(
@@ -40,7 +42,17 @@ async function send(
     // thing that can end a stalled download, and an Ashby board is megabytes of it.
     // `res.ok` is false for a 3xx too, so a manual redirect never reads a body.
     const body = res.ok ? (kind === 'json' ? await res.json() : await res.text()) : null
-    return { status: res.status, body, location: res.headers.get('location') }
+    // What the body is, not only where it came from. A brief behind a link is a Google Docs
+    // export, a raw file off GitHub or a page, and the three have to be read differently;
+    // a PDF served at a link is refused on this header before anything tries to make text
+    // of it. Every existing caller destructures the fields it wants, so this reaches them
+    // as an unread extra.
+    return {
+      status: res.status,
+      body,
+      location: res.headers.get('location'),
+      contentType: res.headers.get('content-type') ?? '',
+    }
   } catch {
     // Timeout, DNS failure, a refused connection and a body that stops mid-stream are all
     // the same story to the user.
@@ -129,13 +141,26 @@ export function assertReachableAddress(url: URL): void {
 /**
  * Redirects are followed by hand so that every hop is checked, not just the URL the user
  * pasted — otherwise a public host could bounce the request straight at an internal one.
+ *
+ * `contentType` is the header of the hop that finally answered, `''` when it sent none. The
+ * caller decides from it whether the body is text to keep as it is, a page to strip, or a
+ * file to refuse; this layer only reports what it was told.
  */
-export async function getGuardedText(url: URL): Promise<{ status: number; text: string }> {
+export async function getGuardedText(
+  url: URL,
+): Promise<{ status: number; text: string; contentType: string }> {
   let target = url
   for (let hop = 0; ; hop++) {
     assertReachableAddress(target)
-    const { status, body, location } = await send(target.href, 'text/html', 'text', 'manual')
-    if (status < 300 || status >= 400 || !location) return { status, text: (body as string) ?? '' }
+    const { status, body, location, contentType } = await send(
+      target.href,
+      'text/html',
+      'text',
+      'manual',
+    )
+    if (status < 300 || status >= 400 || !location) {
+      return { status, text: (body as string) ?? '', contentType }
+    }
     if (hop === MAX_REDIRECTS) {
       throw new FetchBlockedError(`That link keeps redirecting — ${PASTE_INSTEAD}`)
     }

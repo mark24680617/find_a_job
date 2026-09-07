@@ -1,14 +1,14 @@
 import { humanizeSlug } from '@/adapters/html'
-import { runProcessDigest } from '@/ai/flows/processDigest'
+import { runProcessDigest, type ProcessDigest } from '@/ai/flows/processDigest'
 import { runProcessGather } from '@/ai/flows/processGather'
 import { runProcessSynthesize } from '@/ai/flows/processSynthesize'
 import { FlowOutputError } from '@/ai/genkit'
 import { summarizeJob } from '@/ai/prompts/prepBrief'
 import type { EvidenceDigest, EvidenceNote } from '@/ai/prompts/processSynthesize'
 import { readSource, resolveGroundingUrl, searchHackerNews, searchReddit } from '@/lib/research/community'
-import { planQueries } from '@/lib/research/planQueries'
+import { planQueries, type PlannedQuery } from '@/lib/research/planQueries'
 import { isStale } from '@/lib/research/quotes'
-import { roleFamily } from '@/lib/research/roleFamily'
+import { roleFamily, type RoleFamily } from '@/lib/research/roleFamily'
 import {
   capTitle,
   guessCompanyHost,
@@ -21,17 +21,23 @@ import {
   under,
   type SourceCandidate,
 } from '@/lib/research/sources'
-import type { CommunityGuide, ParsedJob, ProcessMap } from '@/lib/types'
+import type { CommunityGuide, ParsedJob, ProcessMap, ResearchSource } from '@/lib/types'
 
 /**
- * Research how one company interviews for one role. Five steps, each tolerant of the one
- * before it losing pieces: plan the searches; ask the model to read the web for each, keeping
- * the pages Google grounded it on; ask two public APIs where people compare notes; read the
- * best few write-ups ourselves and digest them; draw the loop from all of it, guarded.
+ * The research pipeline: ask the web about one company, then read the best of what it says.
  *
- * It knows nothing about requests or the database. The route calls it between its guards and
- * its write, and the smoke calls it with a posting it made up — same run, same spend, and no
- * second copy of the orchestration to drift from this one.
+ * Two runs need it — the interview process map and the take-home guide — and they differ only
+ * in the words they search with and in what they ask the model to take from a page. So the
+ * walk itself lives here once, in two halves. `gatherEvidence` runs the planned searches, asks
+ * the two community APIs, resolves Google's grounding redirects, and folds all of it into one
+ * numbered list of sources with the observations tagged onto it. `readGuides` walks that list
+ * a few at a time, reads the best pages, and hands each to a digest the caller supplies —
+ * which is the only place the two runs differ. `researchProcess` is the first caller and is
+ * now nothing more than those two halves with the process map's words in them.
+ *
+ * Neither half knows anything about requests or the database. A route calls them between its
+ * guards and its write, and the smoke calls them with a posting it made up — same run, same
+ * spend, and no second copy of the orchestration to drift from this one.
  */
 
 const JD_EXCERPT = 3000
@@ -47,9 +53,9 @@ const settled = <T>(results: PromiseSettledResult<T>[]): T[] =>
   results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
 
 /**
- * What a run did that the finished map cannot carry: one search, whether it came back, the
+ * What a run did that the finished record cannot carry: one search, whether it came back, the
  * observations it made, and the pages behind its grounding chunks once the redirects are
- * resolved. The smoke prints it to judge a run; the route asks for none of it.
+ * resolved. The smoke prints it to judge a run; the routes ask for none of it.
  */
 export interface GatherTrace {
   query: string
@@ -58,31 +64,37 @@ export interface GatherTrace {
   urls: string[]
 }
 
-export interface ResearchInput {
+export interface GatherInput {
   company: string
   role: string
-  jdRaw: string
+  family: RoleFamily
+  queries: PlannedQuery[]
+  /**
+   * What to ask the two community APIs. `terms` replaces the word appended to the quoted
+   * company name and `titlePattern` replaces the Hacker News title filter, because a run about
+   * take-homes is looking for the threads a run about the loop would throw away.
+   */
+  community: { terms: string; titlePattern: RegExp }
   sourceUrl?: string
-  parsed: ParsedJob
+  /**
+   * The run's one clock, taken before the first search. Nothing in this half measures with it
+   * — the reading half does — but both are handed the same one, so a run cannot end up judging
+   * its sources against two different moments.
+   */
+  startedAt: string
   onGathers?: (traces: GatherTrace[]) => void
-  /** How many pages the read step tried, and how many became digests. The smoke prints it. */
-  onReads?: (counts: { attempted: number; landed: number }) => void
 }
 
 /**
- * The map, or a throw. `FlowOutputError` from the synthesis means the model could not draw a
- * loop that passed its guard — the caller decides what that costs the person. Nothing is
- * written anywhere here, so a failed run costs a minute and not a map they already had.
+ * Steps 1 to 3 of a run: the searches, the community, and the sources they agree on. The
+ * observations come back tagged with the ids of the pages that support them, which is what
+ * lets a synthesis cite anything at all. `grounded` is false only when every search failed —
+ * one that found nothing is a search, not a lost web.
  */
-export async function researchProcess(input: ResearchInput): Promise<ProcessMap> {
-  const { company, role, jdRaw, sourceUrl, parsed } = input
-  const family = roleFamily(role)
-  // Two clocks, both taken from the start of the run. `startedAt` gives the searches their
-  // year and measures the two-year windows below — which write-ups count as recent, which
-  // digests are stale. The map's own stamp is taken at the end, when the research has
-  // actually finished.
-  const startedAt = new Date().toISOString()
-  const queries = planQueries(company, role, family, new Date(startedAt).getFullYear())
+export async function gatherEvidence(
+  input: GatherInput,
+): Promise<{ sources: ResearchSource[]; notes: EvidenceNote[]; grounded: boolean }> {
+  const { company, role, family, queries, community: ask, sourceUrl } = input
 
   // 1 + 2. The searches, all at once. A gather that fails is a search that found nothing;
   // only when every one of them fails has the web been lost, and the synthesis is told.
@@ -95,7 +107,12 @@ export async function researchProcess(input: ResearchInput): Promise<ProcessMap>
   // 3. The community, by its own APIs. Their hits go into the pile before the grounded pages,
   // because `mergeSources` keeps the first title it sees for a URL: Reddit and HN carry the
   // title the thread's author gave it, while grounding often names a page by its bare domain.
-  const community = settled(await Promise.allSettled([searchReddit(company), searchHackerNews(company)])).flat()
+  const community = settled(
+    await Promise.allSettled([
+      searchReddit(company, { terms: ask.terms }),
+      searchHackerNews(company, { terms: ask.terms, titlePattern: ask.titlePattern }),
+    ]),
+  ).flat()
   const candidates: SourceCandidate[] = [...community]
 
   // Grounding names pages through Google's redirect; each distinct one is resolved once, so
@@ -119,9 +136,9 @@ export async function researchProcess(input: ResearchInput): Promise<ProcessMap>
     })),
   )
 
-  // Five searches about one company repeat themselves. An observation two of them made is one
-  // note supported by both, folded on its text the way the candidates are folded on their URL:
-  // the same sentence five times over would read to the synthesis as five reports.
+  // Several searches about one company repeat themselves. An observation two of them made is
+  // one note supported by both, folded on its text the way the candidates are folded on their
+  // URL: the same sentence five times over would read to the synthesis as five reports.
   const noteUrls = new Map<string, Set<string>>()
   for (const g of gathers) {
     const urlOf = (i: number) => chunkUrls.get(g.chunks[i]?.uri ?? '') ?? ''
@@ -161,20 +178,50 @@ export async function researchProcess(input: ResearchInput): Promise<ProcessMap>
   const idsFor = (urls: string[]) =>
     [...new Set(urls.map((u) => { try { return idByUrl.get(normalizeUrl(u)) } catch { return undefined } }))].filter((x): x is string => !!x)
 
-  // 4. Read the best few ourselves, and digest each. A page that cannot be read, or a digest
-  // the model cannot write, is a source that stays a link.
-  //
-  // Down the ranked list a few at a time rather than taking the top six and hoping: a page
-  // that reads to nothing — a link post with no comments under it, a site that refuses us —
-  // used to spend one of the six slots and leave the map with nothing read. So the six are
-  // digests that landed, not reads attempted, and the list is walked until six have landed or
-  // twelve pages have been tried. A batch that lands more than the slots left keeps them all;
-  // the reading is already paid for.
-  const ranked = rankGuides(sources, company, startedAt).filter(isFetchable)
-  const guides: CommunityGuide[] = []
-  const digestsForPrompt: EvidenceDigest[] = []
+  const notes: EvidenceNote[] = [...noteUrls].map(([text, urls]) => ({ sourceIds: idsFor([...urls]), text }))
+  return { sources, notes, grounded }
+}
+
+export interface ReadInput<D> {
+  sources: ResearchSource[]
+  company: string
+  startedAt: string
+  /** The word this run is looking for in a title — see `rankGuides`. */
+  titleTerm: RegExp
+  /**
+   * What to take from one page. The only part of the read step the two runs do not share, so
+   * it is the caller's: it may set `source.publishedAt` from a date it found in the text, and
+   * it returns `null` for a page that gave it nothing — a failed digest included, which is why
+   * `FlowOutputError` is caught there and not here.
+   */
+  digest: (source: ResearchSource, text: string) => Promise<D | null>
+  /** How many pages this step tried, and how many became digests. The smoke prints it. */
+  onReads?: (counts: { attempted: number; landed: number }) => void
+}
+
+/**
+ * Step 4: read the best few sources ourselves and digest each. A page that cannot be read, or
+ * a digest the caller will not take, is a source that stays a link.
+ *
+ * Down the ranked list a few at a time rather than taking the top six and hoping: a page that
+ * reads to nothing — a link post with no comments under it, a site that refuses us — used to
+ * spend one of the six slots and leave the record with nothing read. So the six are digests
+ * that landed, not reads attempted, and the list is walked until six have landed or twelve
+ * pages have been tried. A batch that lands more than the slots left keeps them all; the
+ * reading is already paid for.
+ *
+ * The sources are mutated in place — retitled, marked fetched, sometimes dated — because they
+ * are the same records the caller is about to store. Results come back in landing order, which
+ * is whatever order a batch resolved in; the caller sorts them.
+ */
+export async function readGuides<D>(
+  input: ReadInput<D>,
+): Promise<{ sourceId: string; digest: D; stale: boolean }[]> {
+  const { sources, company, startedAt, titleTerm } = input
+  const ranked = rankGuides(sources, company, startedAt, titleTerm).filter(isFetchable)
+  const landed: { sourceId: string; digest: D; stale: boolean }[] = []
   let attempted = 0
-  for (let i = 0; i < ranked.length && guides.length < MAX_GUIDES && attempted < MAX_READS; i += READ_BATCH) {
+  for (let i = 0; i < ranked.length && landed.length < MAX_GUIDES && attempted < MAX_READS; i += READ_BATCH) {
     const batch = ranked.slice(i, i + READ_BATCH)
     attempted += batch.length
     await Promise.all(
@@ -185,29 +232,16 @@ export async function researchProcess(input: ResearchInput): Promise<ProcessMap>
         // not something a reader can check. A page we fetched said what it is called, so it
         // replaces the domain — before the digest, which reads better for having a real title.
         if (read.title && titledByHost(source)) source.title = read.title
-        let digest
-        try {
-          digest = await runProcessDigest({ company, title: source.title, text: read.text })
-        } catch (error) {
-          if (error instanceof FlowOutputError) return
-          throw error
-        }
-        if (digest.takeaways.length === 0) return
+        const digest = await input.digest(source, read.text)
+        if (digest === null) return
         source.fetched = true
-        if (digest.publishedAt && !source.publishedAt) source.publishedAt = digest.publishedAt
-        guides.push({
-          sourceId: source.id,
-          takeaways: digest.takeaways,
-          questionsReported: digest.questionsReported,
-          quotes: digest.quotes,
-          stale: isStale(source.publishedAt, startedAt),
-          firstHand: digest.firstHand,
-        })
-        digestsForPrompt.push({ sourceId: source.id, takeaways: digest.takeaways, questionsReported: digest.questionsReported, quotes: digest.quotes })
+        // After the digest, deliberately: the callback may have found a date in the page that
+        // the source did not carry, and that is the date staleness should be measured from.
+        landed.push({ sourceId: source.id, digest, stale: isStale(source.publishedAt, startedAt) })
       }),
     )
   }
-  input.onReads?.({ attempted, landed: guides.length })
+  input.onReads?.({ attempted, landed: landed.length })
 
   // Whatever is still named by its bare host was never read, and most sources never are. The
   // last path segment is the page's own account of what it is about — "how-we-hire" reads as
@@ -226,11 +260,89 @@ export async function researchProcess(input: ResearchInput): Promise<ProcessMap>
     if (humanized !== '') source.title = humanized
   }
 
-  guides.sort((a, b) => Number(a.sourceId.slice(1)) - Number(b.sourceId.slice(1)))
-  digestsForPrompt.sort((a, b) => Number(a.sourceId.slice(1)) - Number(b.sourceId.slice(1)))
+  return landed
+}
+
+export interface ResearchInput {
+  company: string
+  role: string
+  jdRaw: string
+  sourceUrl?: string
+  parsed: ParsedJob
+  onGathers?: (traces: GatherTrace[]) => void
+  /** How many pages the read step tried, and how many became digests. The smoke prints it. */
+  onReads?: (counts: { attempted: number; landed: number }) => void
+}
+
+/**
+ * Research how one company interviews for one role: the two halves above with the process
+ * map's words in them, then the synthesis.
+ *
+ * The map, or a throw. `FlowOutputError` from the synthesis means the model could not draw a
+ * loop that passed its guard — the caller decides what that costs the person. Nothing is
+ * written anywhere here, so a failed run costs a minute and not a map they already had.
+ */
+export async function researchProcess(input: ResearchInput): Promise<ProcessMap> {
+  const { company, role, jdRaw, sourceUrl, parsed } = input
+  const family = roleFamily(role)
+  // Two clocks, both taken from the start of the run. `startedAt` gives the searches their
+  // year and measures the two-year windows below — which write-ups count as recent, which
+  // digests are stale. The map's own stamp is taken at the end, when the research has
+  // actually finished.
+  const startedAt = new Date().toISOString()
+  const queries = planQueries(company, role, family, new Date(startedAt).getFullYear())
+
+  const { sources, notes, grounded } = await gatherEvidence({
+    company,
+    role,
+    family,
+    queries,
+    community: { terms: 'interview', titlePattern: /interview/i },
+    sourceUrl,
+    startedAt,
+    onGathers: input.onGathers,
+  })
+
+  const read = await readGuides<ProcessDigest>({
+    sources,
+    company,
+    startedAt,
+    titleTerm: /interview/i,
+    digest: async (source, text) => {
+      let digest
+      try {
+        digest = await runProcessDigest({ company, title: source.title, text })
+      } catch (error) {
+        // A page the model could not digest twice is a source that stays a link; anything
+        // else — a network fault, a bug — is not this run's to swallow.
+        if (error instanceof FlowOutputError) return null
+        throw error
+      }
+      if (digest.takeaways.length === 0) return null
+      if (digest.publishedAt && !source.publishedAt) source.publishedAt = digest.publishedAt
+      return digest
+    },
+    onReads: input.onReads,
+  })
+
+  // Landing order is whatever order the batches resolved in; the record reads by source id.
+  read.sort((a, b) => Number(a.sourceId.slice(1)) - Number(b.sourceId.slice(1)))
+  const guides: CommunityGuide[] = read.map(({ sourceId, digest, stale }) => ({
+    sourceId,
+    takeaways: digest.takeaways,
+    questionsReported: digest.questionsReported,
+    quotes: digest.quotes,
+    stale,
+    firstHand: digest.firstHand,
+  }))
+  const digestsForPrompt: EvidenceDigest[] = read.map(({ sourceId, digest }) => ({
+    sourceId,
+    takeaways: digest.takeaways,
+    questionsReported: digest.questionsReported,
+    quotes: digest.quotes,
+  }))
 
   // 5. Draw the loop.
-  const notes: EvidenceNote[] = [...noteUrls].map(([text, urls]) => ({ sourceIds: idsFor([...urls]), text }))
   const drawn = await runProcessSynthesize({
     jobSummary: summarizeJob(parsed),
     jdExcerpt: jdRaw.slice(0, JD_EXCERPT),

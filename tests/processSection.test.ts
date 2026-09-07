@@ -58,6 +58,16 @@ describe('ProcessSection', () => {
     // The page owns the list; this is the section handing it down to the ledger.
     expect(markup).toContain('Your Recruiter screen')
   })
+  it('says a map with nothing behind it was researched without sources, and offers no empty list', () => {
+    // The line counts to nothing in words, and the disclosure that would open on an empty list
+    // is not there to open.
+    const markup = renderToStaticMarkup(createElement(ProcessSection, {
+      app: app({ process: { ...map, sources: [], guides: [] } }), rounds: [], onResearched: () => {},
+    }))
+    expect(markup).toContain('without sources')
+    expect(markup).not.toContain('from 0 sources')
+    expect(markup).not.toContain('All 0 sources')
+  })
   it('says what it knows about each write-up: undated, old, or second-hand', () => {
     const guide = map.guides[0]
     const undated = { ...map, sources: [{ ...map.sources[0], publishedAt: undefined }, map.sources[1]] }

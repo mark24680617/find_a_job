@@ -48,8 +48,10 @@ export interface Application {
 }
 // RoundType gains 'system-design'. Without it a system-design notice is typed 'technical' and
 // can never claim the map's system-design stage, and the design practice mode never happens.
+// RoundType gains 'take-home': the notice hands over an assignment. `datetime` is the deadline.
 export type RoundType =
-  | 'recruiter-screen' | 'technical' | 'system-design' | 'behavioral' | 'panel' | 'onsite' | 'other'
+  | 'recruiter-screen' | 'technical' | 'system-design' | 'behavioral' | 'panel' | 'onsite'
+  | 'take-home' | 'other'
 
 export interface PrepBrief {
   likelyTopics: string[]
@@ -114,6 +116,11 @@ export interface InterviewRound {
   askHuman?: AskHuman[]  // what the notice didn't say; display-only, and it survives a reload
   chat: MockTurn[]       // the transcript of the current or most recent session; only `start` clears it
   mock?: MockSession
+  // A take-home round only, and both absent until the candidate acts: the brief they added,
+  // and the plan drawn from it. Until there is an assignment the notice itself is the brief —
+  // `briefInUse` in src/lib/assignment.ts is the one place that decides which.
+  assignment?: Assignment
+  takeHome?: TakeHomeGuide
   createdAt: string
 }
 
@@ -160,4 +167,59 @@ export interface ProcessMap {
   stages: ProcessStage[]; takeHome: TakeHome; timeline?: string
   sources: ResearchSource[]; guides: CommunityGuide[]
   askRecruiter: string[]; caveats: string[]; grounded: boolean; researchedAt: string
+}
+
+// ── The take-home ────────────────────────────────────────────────────────────────────────
+// A take-home is a round the product did not know how to hold: not a conversation to rehearse
+// but a brief to read closely and a few days to spend well. The brief as the product read it
+// is an `Assignment`; the guide drawn from it is a `TakeHomeGuide`, which keeps three kinds of
+// sentence apart on purpose — what the brief itself says (each item carrying a verbatim span
+// of it), what people report (each item carrying source ids), and a suggested plan that cites
+// nothing and claims nothing about the company. The apartness is checked in code, in
+// src/lib/research/takeHomeGuard.ts; the types are what make it checkable.
+
+/** The brief as the product read it. `text` is what every quote below is checked against. */
+export interface Assignment {
+  text: string                       // ≤ MAX_BRIEF_CHARS (20,000); longer input is cut there
+  source: 'pasted' | 'pdf' | 'url'   // the notice itself is never stored here — it is noticeRaw
+  url?: string                       // the address as given (before any rewrite)
+  addedAt: string                    // ISO; also the identity of this brief (see plannedFrom)
+  cut: boolean                       // true when the input was longer than MAX_BRIEF_CHARS
+}
+
+/** A sentence backed by a verbatim span of the brief. */
+export interface Quoted { text: string; quote: string }   // quote ≤ 240 chars, a substring of the brief
+/** A sentence backed by sources. */
+export interface Cited { text: string; sourceIds: string[] }
+
+export interface TakeHomeDigest {
+  sourceId: string
+  takeaways: string[]                // 2–5, one sentence each
+  quotes: string[]                   // verbatim, ≤ 240 chars each, verified
+  stale: boolean
+  firstHand: boolean
+}
+
+export interface TakeHomeGuide {
+  brief: {
+    task: string                     // the assignment in one paragraph, the model's words
+    timeLimit?: Quoted               // the constraint that says how long the candidate has
+    deliverables: Quoted[]           // what to hand in
+    constraints: Quoted[]            // time limit, language, stack, "do not spend more than…"
+    evaluation: Quoted[]             // what the brief says it will be judged on
+  }
+  reported: {
+    tasks: Cited[]                   // what other candidates were given
+    evaluation: Cited[]              // what reviewers look for, as reported
+    pitfalls: Cited[]                // why people say they were rejected
+    time: Cited[]                    // how long people were given or spent
+  }
+  plan: { step: string; budget?: string }[]   // ≤ 12, in order; suggested, cites nothing
+  askRecruiter: string[]             // what the brief leaves open and the evidence could not settle
+  caveats: string[]
+  sources: ResearchSource[]
+  guides: TakeHomeDigest[]
+  grounded: boolean
+  plannedFrom: string                // the brief it was drawn from: assignment.addedAt, or 'notice'
+  plannedAt: string                  // ISO
 }

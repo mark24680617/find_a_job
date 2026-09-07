@@ -52,6 +52,13 @@ describe('searchReddit', () => {
     })
     expect(hits[1].snippet).toBe('')
   })
+  it('asks about whatever this run is about, in place of the word it defaults to', async () => {
+    redditOk(fixture('reddit-search'))
+    await searchReddit('Marram Systems', { terms: 'take home' })
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://oauth.reddit.com/search?q=%22Marram%20Systems%22%20take%20home&sort=relevance&t=all&limit=10&raw_json=1',
+    )
+  })
   it('keeps a hit whose timestamp is out of range, dateless, rather than losing the search', async () => {
     redditOk(fixture('reddit-search'))
     const hits = await searchReddit('Marram Systems')
@@ -121,6 +128,36 @@ describe('searchHackerNews', () => {
     // "Co-Founder … Interviewed in Depth" is the other sense of the word entirely.
     expect(urls).not.toContain('https://podcast.example.com/marram')
     expect(urls).not.toContain('https://techcrunch.com/marram')
+  })
+  it('takes a title pattern for a run that is not about the loop, and still refuses press and Show HN', async () => {
+    // Four stories, none of which the default filter would let through: only one of them says
+    // "interview" at all, and that one is a founder talking to a journalist.
+    const hits = {
+      hits: [
+        { title: 'The Marram Systems take home, in full', objectID: '1', url: 'https://blog.example.com/marram-take-home', created_at: '2026-03-01T00:00:00.000Z' },
+        { title: 'Co-Founder of Marram Systems Interviewed in Depth', objectID: '2', url: 'https://podcast.example.com/marram', created_at: '2026-03-01T00:00:00.000Z' },
+        { title: 'Show HN: A take home assignment grader', objectID: '3', url: 'https://prep.example.com/grader', created_at: '2026-03-01T00:00:00.000Z' },
+        { title: 'Marram Systems raises a Series B', objectID: '4', url: 'https://techcrunch.com/marram', created_at: '2026-03-01T00:00:00.000Z' },
+      ],
+    }
+    getJson.mockResolvedValue({ status: 200, json: hits })
+    const urls = (
+      await searchHackerNews('Marram Systems', {
+        terms: 'take home',
+        titlePattern: /interview|take[- ]?home|assignment/i,
+      })
+    ).map((h) => h.url)
+    expect(getJson.mock.calls[0][0]).toBe(
+      'https://hn.algolia.com/api/v1/search?query=%22Marram%20Systems%22%20take%20home&tags=story&hitsPerPage=10',
+    )
+    expect(urls).toEqual(['https://blog.example.com/marram-take-home'])
+    // The two filters the pattern does not replace, still doing their work.
+    expect(urls).not.toContain('https://podcast.example.com/marram')
+    expect(urls).not.toContain('https://prep.example.com/grader')
+    // And the default keeps its own line: a take-home write-up that never says "interview" is
+    // not what the process map went looking for.
+    getJson.mockResolvedValue({ status: 200, json: hits })
+    await expect(searchHackerNews('Marram Systems')).resolves.toEqual([])
   })
   it('returns nothing on a refusal or a malformed body, never throws', async () => {
     getJson.mockResolvedValue({ status: 503, json: null })

@@ -244,6 +244,16 @@ describe('POST /api/applications/[id]/interviews/[rid]/mock — the guards', () 
     await expect(res.json()).resolves.toMatchObject({ error: expect.stringMatching(/start, answer, end or added/) })
     expect(updateInterview).not.toHaveBeenCalled()
   })
+
+  it('refuses a take-home round — it is not a round anybody practises', async () => {
+    stored = round({ roundType: 'take-home' })
+    const res = await post({ action: 'start' })
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'a take-home round is not practised' })
+    expect(getProfile).not.toHaveBeenCalled()
+    expect(runMockTurn).not.toHaveBeenCalled()
+    expect(updateInterview).not.toHaveBeenCalled()
+  })
 })
 
 describe('POST …/mock — start', () => {

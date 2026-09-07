@@ -3,9 +3,13 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Working } from '@/components/Working'
+import { AssignmentSection } from '@/components/interviews/AssignmentSection'
 import { BriefView } from '@/components/interviews/BriefView'
 import { MockSection } from '@/components/interviews/MockSection'
+import { TakeHomeSection } from '@/components/interviews/TakeHomeSection'
+import { SourceList } from '@/components/process/SourceList'
 import { ApiError, apiDownload, apiFetch } from '@/lib/apiFetch'
+import { briefInUse, type SectionLock } from '@/lib/assignment'
 import { placeRound } from '@/lib/practice'
 import { mapRoundToStage, nextStage, stagePosition } from '@/lib/processMap'
 import { readable } from '@/lib/readable'
@@ -17,6 +21,12 @@ import type { Application, Fact, InterviewRound, ProcessMap, Profile } from '@/l
  * One round, on its own page: what it is and when, where it sits on the reported loop, the
  * brief written for it, and the notice it came from. The application page's card links here;
  * the map's pinned rounds link here. This is where the mock interview will live.
+ *
+ * A take-home does not take that shape. There is no conversation to rehearse and no brief worth
+ * writing for one — what it has is an assignment and the days before it is due — so its page
+ * carries those two sections where every other round carries the brief and the practice, its
+ * time is a deadline, and where it sits is a question about the map's take-home block rather
+ * than about the loop's stages.
  */
 
 interface PlacementProps {
@@ -80,6 +90,59 @@ export function RoundPlacement({ round, rounds, map, appId, roundsFailed = false
         </ul>
       )}
       <p className="mt-3 text-sm text-ink-3">{next ? `Next: ${next.name}` : 'This is the last reported stage.'}</p>
+    </div>
+  )
+}
+
+/**
+ * Where a take-home round sits — which, when the research found no take-home stage, is a
+ * question about the map rather than about this round.
+ *
+ * `mapRoundToStage` returns null for a take-home round on a loop with no take-home stage, and
+ * again for a second take-home round once the first has claimed the only one. Today's answer to
+ * that null — "this round isn't on the reported loop" — is true of the stages and useless here:
+ * the research answers "is there a take-home" in a block of its own, and that block is the one
+ * thing the person opening this page wants. Worse, for a `no` it would leave them holding an
+ * email that contradicts the product with no way to see what the product was going on. So the
+ * verdict is shown with its description and its sources under it, exactly as the process section
+ * shows them, and can be argued with.
+ *
+ * Every other case is the ordinary one and `RoundPlacement` still answers it: a take-home round
+ * that maps to a take-home stage is placed like any other round, a page with no map points back
+ * to the research, and a sibling list that failed to load is reported as a failed load. This is
+ * a narrower answer laid over one null, not a second placement section.
+ *
+ * Exported for the static test.
+ */
+export function TakeHomePlacement(props: PlacementProps) {
+  const { round, rounds, map, roundsFailed = false } = props
+  // The same list guard RoundPlacement applies, for the same reason: this round has to be in the
+  // list to be found among the others, and it is missing whenever the page was opened by link.
+  const known = rounds.some((r) => r.id === round.id) ? rounds : [...rounds, round]
+  if (!map || roundsFailed || mapRoundToStage(round, known, map) !== null) {
+    return <RoundPlacement {...props} />
+  }
+  const { takeHome } = map
+  const verdict =
+    takeHome.present === 'yes'
+      ? 'The research reported a take-home.'
+      : takeHome.present === 'no'
+        ? 'The research reported no take-home. This one is not on the reported loop.'
+        : 'The research could not settle whether there is a take-home.'
+  // Only the sources the take-home block itself cited. The map's other sources say nothing about
+  // a take-home, and listing them here would dress the verdict in evidence it does not have.
+  const cited = map.sources.filter((s) => takeHome.sourceIds.includes(s.id))
+  return (
+    <div className="max-w-[62ch]">
+      <p className="text-[0.9375rem] leading-relaxed text-ink">{verdict}</p>
+      {takeHome.description !== '' && (
+        <p className="mt-1.5 text-[0.9375rem] leading-relaxed text-ink-2">{takeHome.description}</p>
+      )}
+      {cited.length > 0 && (
+        <div className="mt-2">
+          <SourceList sources={cited} />
+        </div>
+      )}
     </div>
   )
 }
@@ -230,6 +293,14 @@ export function RoundPage({ appId, rid }: Props) {
   const [loadError, setLoadError] = useState('')
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState('')
+  /**
+   * Which of the two take-home sections is working, if either — one lock over both, because they
+   * are one record read two ways. A brief replaced while a plan is being drawn from the old one
+   * would leave the guide quoting a text nobody has, and the plan route's 409 would refuse the
+   * plan after the minute it cost. So the assignment panel refuses to open while a plan is being
+   * drawn, and the plan button waits while a brief is being read.
+   */
+  const [lock, setLock] = useState<SectionLock>(null)
 
   useEffect(() => {
     let live = true
@@ -310,6 +381,15 @@ export function RoundPage({ appId, rid }: Props) {
 
   const when = formatWhen(round.datetime)
   const asks = round.askHuman ?? []
+  // The one branch in this page. A take-home's time is a deadline, its placement is a question
+  // about the map's take-home block, and the two sections below it are the assignment and the
+  // plan rather than the brief and the practice.
+  const takeHome = round.roundType === 'take-home'
+  // Which of the two texts is the brief — the stored assignment, or the notice standing in for
+  // one. Decided in one place, here, and handed to both sections — one call is what keeps the
+  // two from disagreeing about which text is the brief. Cheap enough for every round type that
+  // guarding the call would cost more than making it.
+  const brief = briefInUse(round)
   // The same two guards the placement paragraph above applies, for the same reasons: this round
   // has to be in the list to be found among the others, and a list that failed to arrive is no
   // answer at all rather than a short one. Placement only decides the resting copy and the mode
@@ -329,7 +409,13 @@ export function RoundPage({ appId, rid }: Props) {
         <div className="min-w-0">
           <h1 className="font-display text-[2rem] leading-tight tracking-tight text-ink">{ROUND_LABEL[round.roundType]}</h1>
           <p className="mt-1 text-[1.0625rem] text-ink-2">
-            {when ? <time dateTime={round.datetime} className="tnum">{when}</time> : 'Time not stated'}
+            {when ? (
+              <time dateTime={round.datetime} className="tnum">{takeHome ? `Due ${when}` : when}</time>
+            ) : takeHome ? (
+              'Deadline not stated'
+            ) : (
+              'Time not stated'
+            )}
             {round.people.length > 0 && <> · with {round.people.join(', ')}</>}
           </p>
         </div>
@@ -346,13 +432,23 @@ export function RoundPage({ appId, rid }: Props) {
       <section aria-labelledby="placement-heading" className="mt-10">
         <h2 id="placement-heading" className="text-xs font-medium uppercase tracking-[0.12em] text-ink-3">Where this sits</h2>
         <div className="mt-3">
-          <RoundPlacement
-            round={round}
-            rounds={rounds}
-            map={app.process}
-            appId={appId}
-            roundsFailed={roundsFailed}
-          />
+          {takeHome ? (
+            <TakeHomePlacement
+              round={round}
+              rounds={rounds}
+              map={app.process}
+              appId={appId}
+              roundsFailed={roundsFailed}
+            />
+          ) : (
+            <RoundPlacement
+              round={round}
+              rounds={rounds}
+              map={app.process}
+              appId={appId}
+              roundsFailed={roundsFailed}
+            />
+          )}
         </div>
       </section>
 
@@ -367,25 +463,51 @@ export function RoundPage({ appId, rid }: Props) {
         </section>
       )}
 
-      <BriefSection appId={appId} round={round} map={app.process} onRound={setRound} />
-
-      <section aria-labelledby="practice-heading" className="mt-10">
-        <h2 id="practice-heading" className="text-xs font-medium uppercase tracking-[0.12em] text-ink-3">Practice</h2>
-        <div className="mt-3">
-          <MockSection
+      {takeHome ? (
+        <>
+          <AssignmentSection
             appId={appId}
             round={round}
-            placement={placement}
-            family={roleFamily(app.role)}
-            sources={app.process?.sources ?? []}
-            facts={facts}
-            profileFailed={profileFailed}
-            company={app.company}
+            brief={brief}
+            planExists={round.takeHome !== undefined}
+            lock={lock}
+            setLock={setLock}
             onRound={setRound}
-            onFactsChanged={reloadProfile}
           />
-        </div>
-      </section>
+
+          <TakeHomeSection
+            appId={appId}
+            round={round}
+            company={app.company}
+            brief={brief}
+            lock={lock}
+            setLock={setLock}
+            onRound={setRound}
+          />
+        </>
+      ) : (
+        <>
+          <BriefSection appId={appId} round={round} map={app.process} onRound={setRound} />
+
+          <section aria-labelledby="practice-heading" className="mt-10">
+            <h2 id="practice-heading" className="text-xs font-medium uppercase tracking-[0.12em] text-ink-3">Practice</h2>
+            <div className="mt-3">
+              <MockSection
+                appId={appId}
+                round={round}
+                placement={placement}
+                family={roleFamily(app.role)}
+                sources={app.process?.sources ?? []}
+                facts={facts}
+                profileFailed={profileFailed}
+                company={app.company}
+                onRound={setRound}
+                onFactsChanged={reloadProfile}
+              />
+            </div>
+          </section>
+        </>
+      )}
 
       <details className="faq mt-10 text-sm">
         <summary className="btn-link inline cursor-pointer">The notice as it arrived</summary>

@@ -41,6 +41,31 @@ describe('mapRoundToStage', () => {
     const r = round('r1', 'system-design', '2026-09-01T00:00:00.000Z')
     expect(mapRoundToStage(r, [r], designMap)?.name).toBe('System & API Design')
   })
+  it('gives a take-home round the loop’s take-home stage', () => {
+    // Until this round type existed a take-home notice could only be logged as 'other', which
+    // claims nothing — so the stage sat on every map with no round able to reach it.
+    const t = round('t1', 'take-home', '2026-09-01T00:00:00.000Z')
+    expect(mapRoundToStage(t, [t], map)?.order).toBe(2)
+  })
+
+  it('places no take-home round on a loop that reports no take-home stage', () => {
+    const noTakeHome: ProcessMap = {
+      ...map,
+      stages: map.stages.filter((s) => s.kind !== 'take-home'),
+    }
+    const t = round('t1', 'take-home', '2026-09-01T00:00:00.000Z')
+    expect(mapRoundToStage(t, [t], noTakeHome)).toBeNull()
+  })
+
+  it('leaves a second take-home round unplaced once the first has claimed the stage', () => {
+    // Two take-homes and one take-home stage. The earlier-logged round takes it; the other is
+    // off the loop, and its page shows the map's own verdict about take-homes rather than
+    // "not on the reported loop" — which is why this null has to be a case of its own.
+    const t1 = round('t1', 'take-home', '2026-09-01T00:00:00.000Z')
+    const t2 = round('t2', 'take-home', '2026-09-04T00:00:00.000Z')
+    expect(mapRoundToStage(t1, [t1, t2], map)?.order).toBe(2)
+    expect(mapRoundToStage(t2, [t1, t2], map)).toBeNull()
+  })
 })
 
 describe('stagePosition / nextStage', () => {
@@ -52,7 +77,7 @@ describe('stagePosition / nextStage', () => {
 })
 
 describe('STAGE_LABEL', () => {
-  it('names every kind, including the two the rounds do not have', () => {
+  it('names every kind a stage can be, the two the round types were slowest to gain included', () => {
     expect(STAGE_LABEL['take-home']).toBe('Take-home')
     expect(STAGE_LABEL['system-design']).toBe('System design')
     expect(STAGE_LABEL['recruiter-screen']).toBe('Recruiter screen')

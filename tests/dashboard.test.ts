@@ -263,6 +263,27 @@ describe('UpcomingStrip render', () => {
     expect(markup).toContain('Add to calendar')
   })
 
+  // The same word as the card and the round page, for the same reason: three surfaces reading
+  // three different ways about one date is how a deadline gets mistaken for a meeting. A
+  // take-home whose notice stated no deadline never reaches this list at all — `upcomingRounds`
+  // above drops every round with no readable time — so there is no "Deadline not stated" here.
+  it('calls a take-home row’s time the deadline it is', () => {
+    const markup = renderToStaticMarkup(
+      createElement(UpcomingStrip, {
+        items: [{ app: app(), round: round({ roundType: 'take-home' }) }],
+      }),
+    )
+    expect(markup).toContain(`Due ${formatWhen('2026-09-05T17:00:00.000Z')}`)
+    expect(markup).toContain('aria-label="Add to calendar: Nectir Take-home"')
+  })
+
+  it('leaves every other row’s time alone', () => {
+    const markup = renderToStaticMarkup(
+      createElement(UpcomingStrip, { items: [{ app: app(), round: round() }] }),
+    )
+    expect(markup).not.toContain('Due ')
+  })
+
   it('names each row\'s button for itself, since they all read "Add to calendar"', () => {
     const markup = renderToStaticMarkup(
       createElement(UpcomingStrip, {
