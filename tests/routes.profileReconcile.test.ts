@@ -50,6 +50,9 @@ const extraction = {
   ],
   standardAnswers: { notice_period: 'two weeks' },
   gaps: ['no links'],
+  // On the wire either way: the route hands the whole extraction back, and the page reads the
+  // contact off it to fill whatever its own block has left blank.
+  contact: { name: 'Tom Candidate', email: '', phone: '(503) 555-0161', location: '' },
 }
 
 const modelOut = {

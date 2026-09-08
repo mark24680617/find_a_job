@@ -24,6 +24,7 @@ import type {
   ParsedJob,
   PrepBrief,
   Profile,
+  ProfileContact,
   QConstraints,
   Question,
   RoundType,
@@ -108,6 +109,15 @@ export const ProfileIngestOutSchema = z.object({
   facts: z.array(FactSchema),
   standardAnswers: z.record(z.string()),
   gaps: z.array(z.string()),
+  // The four letterhead fields, `''` where the document does not state them. A required object
+  // rather than an optional one: an omission is then a schema miss the retry sees and can fix,
+  // where an optional field would come back missing and read as four blanks nobody asked for.
+  contact: z.object({
+    name: z.string(),
+    email: z.string(),
+    phone: z.string(),
+    location: z.string(),
+  }),
 })
 
 /** jobInterpret: a job description in, the parsed posting out. */
@@ -266,7 +276,10 @@ type Assert<T extends true> = T
  * the UI adds `status`), so each check names the exact slice it must match.
  */
 export type SchemaGuards = [
-  Assert<Mutual<ProfileIngestOut, Omit<Profile, 'voiceRules'>>>,
+  // The contact is split out of the whole-shape check on both sides: the stored one is optional,
+  // because every profile written before it exists without one, and the extracted one is not.
+  Assert<Mutual<Omit<ProfileIngestOut, 'contact'>, Omit<Profile, 'voiceRules' | 'contact'>>>,
+  Assert<Mutual<ProfileIngestOut['contact'], ProfileContact>>,
   Assert<Mutual<ProfileIngestOut['facts'][number], Fact>>,
   Assert<Mutual<JobInterpretOut, ParsedJob>>,
   Assert<Mutual<FormParseOut['questions'][number], Pick<Question, 'q' | 'constraints'>>>,

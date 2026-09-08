@@ -106,8 +106,12 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
 const EMAIL_RE_G = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
 const URL_RE =
   /(?:https?:\/\/|www\.)[^\s)]+|\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:com|io|dev|org|net|me|co|app|ai|gg|xyz)\b(?:\/[^\s)]*)?/i
-/** A run of phone-ish characters; the digit count (not the shape) is what qualifies it. */
-const PHONE_RE = /\+?\d[\d\s().-]{7,}\d/
+/**
+ * A run of phone-ish characters; the digit count (not the shape) is what qualifies it. The
+ * opening bracket is taken with it: starting at the first digit cut `(503) 555-0161` down to
+ * `503) 555-0161`, and what this matches is copied into the letterhead the PDF prints.
+ */
+const PHONE_RE = /\+?\(?\d[\d\s().-]{7,}\d/
 /** "City, Region" and nothing else: exactly one comma, both halves capitalised words. */
 const CITY_RE = /^[A-Z][A-Za-z.'-]+(?:\s[A-Za-z.'-]+)*,\s[A-Z][A-Za-z.'-]+(?:\s[A-Za-z.'-]+)*$/
 const EDUCATION_RE =

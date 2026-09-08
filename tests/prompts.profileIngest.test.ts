@@ -17,6 +17,9 @@ Rules:
   else the string "UNKNOWN":
   work_authorization, visa_sponsorship_needed, relocation, remote_onsite_preference,
   earliest_start_date, notice_period, salary_expectation, security_clearance.
+- contact: the candidate's name, email, phone and location exactly as the document states
+  them — location as "City, State" or "City, Country", never a street. A field the document
+  does not state is the empty string "". Never infer any of the four.
 - gaps: list what a job application will likely need that this input does not contain
   (missing dates, unexplained employment gaps, missing metrics, missing links). Never list a
   gap that one of the standardAnswers keys above already covers — those are asked separately.
@@ -86,6 +89,15 @@ describe('buildProfileIngestPrompt system text', () => {
     expect(text).toContain('"entity:<Name>"')
     expect(text).toContain('entity:Fenwick')
     expect(text).toMatch(/At most one, and only when the\s+input names it/)
+  })
+
+  it('asks for the four contact fields, blank where the document is silent', () => {
+    // The letterhead's first source. Before this rule a phone number reached the fact bank only
+    // when the model happened to write one down, so the fill had nothing to read.
+    const text = system({ pastedText })
+    expect(text).toMatch(/- contact: the candidate's name, email, phone and location/)
+    expect(text).toContain('"City, State" or "City, Country", never a street')
+    expect(text).toContain('Never infer any of the four.')
   })
 
   it('is the same text whatever the input is', () => {

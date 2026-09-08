@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useState } from 'react'
-import type { Fact } from '@/lib/types'
+import type { Fact, ProfileContact } from '@/lib/types'
 import { FactSections } from '@/components/profile/FactSections'
 import { nextFactId } from '@/lib/profileView'
 
@@ -13,10 +13,11 @@ import { nextFactId } from '@/lib/profileView'
  * look like text until the pointer or the keyboard reaches them.
  *
  * Two readings of the same working copy sit behind a toggle. **Organized** is the human view —
- * an identity block and the facts sorted into resume sections, for reading. **All facts** is the
+ * the contact block and the facts sorted into resume sections, for reading. **All facts** is the
  * raw table below, the AI substrate, where every claim is edited, tagged, sourced and deleted.
- * Editing lives only in the raw table; because both views render the same `facts`, a correction
- * there shows up organized on the next render.
+ * Editing a CLAIM lives only in the raw table; because both views render the same `facts`, a
+ * correction there shows up organized on the next render. The contact block is the exception —
+ * it is four fields of its own, not a reading of the facts.
  *
  * Nothing here saves. Every change goes up to the page, which owns the dirty state and the PUT.
  */
@@ -25,9 +26,12 @@ type View = 'organized' | 'all'
 
 interface Props {
   facts: Fact[]
-  // Read-only, for the identity block — an ingest occasionally writes a contact detail here.
+  // Read-only, for the contact block, which offers what either of them says for a field the
+  // person has left blank — an ingest occasionally writes a contact detail here.
   standardAnswers: Record<string, string>
+  contact: ProfileContact
   onChange: (facts: Fact[]) => void
+  onContactChange: (contact: ProfileContact) => void
 }
 
 /** Grow a claim's box to its content: claims are sentences, and a truncated one can't be checked. */
@@ -37,7 +41,7 @@ function autoGrow(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`
 }
 
-export function FactBank({ facts, standardAnswers, onChange }: Props) {
+export function FactBank({ facts, standardAnswers, contact, onChange, onContactChange }: Props) {
   const [view, setView] = useState<View>('organized')
   const [openSource, setOpenSource] = useState<string | null>(null)
   // Tags round-trip through a string. Parsing on every keystroke would eat the comma the
@@ -96,14 +100,10 @@ export function FactBank({ facts, standardAnswers, onChange }: Props) {
         isn’t true and the agent can no longer say it.
       </p>
 
-      {facts.length === 0 ? (
-        <p className="mt-6 border border-dashed border-line px-5 py-8 text-sm text-ink-2">
-          No facts yet. Add your resume above and the agent will pull them out — or write the
-          first one by hand.
-        </p>
-      ) : view === 'organized' ? (
-        <FactSections facts={facts} standardAnswers={standardAnswers} />
-      ) : (
+      {/* An empty bank is shown organized whatever the toggle last said: the contact block is
+          the one thing on this screen that an empty bank does not empty, and the raw table with
+          no rows in it is a header and nothing else. */}
+      {view === 'all' && facts.length > 0 ? (
         <div className="mt-5 overflow-x-auto">
           <table className="w-full min-w-[46rem] border-collapse text-[0.9375rem]">
             <thead>
@@ -220,6 +220,13 @@ export function FactBank({ facts, standardAnswers, onChange }: Props) {
             </tbody>
           </table>
         </div>
+      ) : (
+        <FactSections
+          facts={facts}
+          standardAnswers={standardAnswers}
+          contact={contact}
+          onChange={onContactChange}
+        />
       )}
     </section>
   )

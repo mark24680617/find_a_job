@@ -1,7 +1,8 @@
 'use client'
 
 import { Fragment, useState } from 'react'
-import type { Fact } from '@/lib/types'
+import { LETTERHEAD_FIELD_MAX } from '@/lib/letter/letterhead'
+import type { Fact, ProfileContact } from '@/lib/types'
 import {
   extractIdentity,
   GENERAL,
@@ -16,7 +17,13 @@ import {
  * resume would have. It is a *view* — nothing here is stored, and every fact still lives in the
  * raw table behind the toggle, which stays the honest source of truth the agent reads from.
  *
- * Presentation only: no editing happens here. A claim that needs correcting is corrected in the
+ * The contact block at the top is the one thing here that is edited rather than read: four fields
+ * that go on a cover letter's letterhead, kept on the profile because they belong to the person
+ * and not to one application. What the facts happen to say about each is offered as a placeholder
+ * — a suggestion accepted by typing it — so that nothing about somebody is stored that they did
+ * not write down themselves.
+ *
+ * Everything below it is presentation only. A claim that needs correcting is corrected in the
  * All-facts table; because both render the same working copy, the fix shows up here on the next
  * render. Sources stay collapsed until asked for, exactly as the table does.
  *
@@ -31,44 +38,92 @@ import {
 interface Props {
   facts: Fact[]
   standardAnswers: Record<string, string>
+  contact: ProfileContact
+  onChange: (contact: ProfileContact) => void
 }
 
-/** The identity rows, in the order a person reads them — who, then where, then how to reach. */
-const IDENTITY_ROWS: { key: keyof Identity; label: string }[] = [
-  { key: 'name', label: 'Name' },
-  { key: 'location', label: 'Location' },
-  { key: 'email', label: 'Email' },
-  { key: 'phone', label: 'Phone' },
-  { key: 'website', label: 'Website' },
+/**
+ * The four editable rows, in the order a person reads them — who, then where, then how to reach.
+ * The `autoComplete` values are the browser's own names for these four, so a saved address card
+ * fills the block in one gesture.
+ */
+const CONTACT_ROWS: {
+  /** In both types: `Identity` holds these four and the website, which is not editable here. */
+  key: keyof ProfileContact & keyof Identity
+  label: string
+  autoComplete: string
+  type?: string
+}[] = [
+  { key: 'name', label: 'Name', autoComplete: 'name' },
+  { key: 'location', label: 'Location', autoComplete: 'address-level2' },
+  { key: 'email', label: 'Email', autoComplete: 'email', type: 'email' },
+  { key: 'phone', label: 'Phone', autoComplete: 'tel', type: 'tel' },
 ]
 
 /** The two sections long enough that "which of these were at Fenwick" is worth answering. */
 const SUB_GROUPED: readonly string[] = ['Experience', 'Projects']
 
-export function FactSections({ facts, standardAnswers }: Props) {
+export function FactSections({ facts, standardAnswers, contact, onChange }: Props) {
   const identity = extractIdentity(facts, standardAnswers)
   const groups = groupFacts(facts)
-  const rows = IDENTITY_ROWS.filter((r) => identity[r.key])
   // Read off the WHOLE bank, not one section: a company named by an Experience fact's tag is
   // still that company when a Projects claim mentions it.
   const known = knownEntities(facts)
 
   return (
     <div className="mt-5">
-      {rows.length > 0 && (
-        <div className="border border-line bg-surface">
-          <div className="border-b border-line px-5 py-3">
-            <h3 className="font-display text-lg tracking-tight text-ink">Identity</h3>
-          </div>
-          <dl className="grid gap-x-6 gap-y-3 px-5 py-4 sm:grid-cols-[7rem_1fr]">
-            {rows.map((row) => (
-              <Fragment key={row.key}>
-                <dt className="text-sm text-ink-3">{row.label}</dt>
-                <dd className="min-w-0 break-words text-[0.9375rem] text-ink">{identity[row.key]}</dd>
-              </Fragment>
-            ))}
-          </dl>
+      {/* Always on screen, blank or not: a profile whose facts say nothing about who you are is
+          exactly the profile that needs these four fields in front of it. */}
+      <div className="border border-line bg-surface">
+        <div className="border-b border-line px-5 py-3">
+          <h3 className="font-display text-lg tracking-tight text-ink">Contact</h3>
+          <p className="mt-1 max-w-[62ch] text-sm leading-relaxed text-ink-2">
+            Goes on your cover letter’s letterhead. Blank is fine — nothing is guessed.
+          </p>
         </div>
+        <div className="grid gap-x-6 gap-y-3 px-5 py-4 sm:grid-cols-[7rem_1fr] sm:items-center">
+          {CONTACT_ROWS.map((row) => {
+            const suggestion = contact[row.key] ? undefined : identity[row.key]
+            return (
+              <Fragment key={row.key}>
+                <label htmlFor={`contact-${row.key}`} className="text-sm text-ink-3">
+                  {row.label}
+                </label>
+                <input
+                  id={`contact-${row.key}`}
+                  type={row.type ?? 'text'}
+                  autoComplete={row.autoComplete}
+                  maxLength={LETTERHEAD_FIELD_MAX}
+                  className="field field-boxed px-3 py-2 text-[0.9375rem]"
+                  // What the facts say, offered rather than written in: the person accepts it by
+                  // typing it, and until they do the field is honestly empty.
+                  placeholder={suggestion ? `From your facts: ${suggestion}` : undefined}
+                  value={contact[row.key]}
+                  onChange={(e) => onChange({ ...contact, [row.key]: e.target.value })}
+                />
+              </Fragment>
+            )
+          })}
+          {/* Read-only, off the facts: a letterhead has no website line, so there is nothing
+              here for the letter to take and nothing to type into. */}
+          {identity.website && (
+            <>
+              <span className="text-sm text-ink-3">Website</span>
+              <span className="min-w-0 break-words text-[0.9375rem] text-ink">
+                {identity.website}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Where the sections would be. An empty bank still has a contact block above this, so the
+          placeholder is a note under it rather than the whole of the screen. */}
+      {facts.length === 0 && (
+        <p className="mt-6 border border-dashed border-line px-5 py-8 text-sm text-ink-2">
+          No facts yet. Add your resume above and the agent will pull them out — or write the
+          first one by hand.
+        </p>
       )}
 
       {groups.map((group) => (

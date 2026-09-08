@@ -10,9 +10,16 @@ import { StandardAnswers } from '@/components/profile/StandardAnswers'
 import { VoiceRules } from '@/components/profile/VoiceRules'
 import { apiFetch } from '@/lib/apiFetch'
 import { MAX_PDF_BYTES } from '@/lib/assignment'
+import { blankContact, differsBesideContact, mergeContact, readContact } from '@/lib/profileMerge'
 import { factFromGapAnswer, visibleGaps } from '@/lib/profileView'
 import { readable } from '@/lib/readable'
-import type { Changeset, ClarifyAnswer, ClarifyQuestion, Profile } from '@/lib/types'
+import type {
+  Changeset,
+  ClarifyAnswer,
+  ClarifyQuestion,
+  Profile,
+  ProfileContact,
+} from '@/lib/types'
 
 /**
  * The profile vault: everything the agent is allowed to know about the candidate, and the one
@@ -25,7 +32,10 @@ import type { Changeset, ClarifyAnswer, ClarifyQuestion, Profile } from '@/lib/t
  *    already known, with its reasons. That proposal is held in the browser and shown as a diff;
  *    only Accept writes, and only what the diff showed. It is still refused while there are
  *    unsaved edits, because the reconcile is computed against the *stored* profile and a
- *    revision aimed at a fact that only exists locally would land on the wrong claim.
+ *    revision aimed at a fact that only exists locally would land on the wrong claim. The
+ *    contact block is outside that: `differsBesideContact` is what the refusal is measured
+ *    with, since no contact field can move a fact id and the reading that fills the block is
+ *    the same reading whose facts are waiting to be accepted.
  * 2. **Everything else is local until Save.** Edits and deletes change a working copy; the PUT
  *    replaces the whole document. Until then "Discard" puts the saved version back, which is
  *    what makes deleting a row a safe thing to try.
@@ -72,6 +82,25 @@ function applied(added: number, updated: number): string {
         ? `Added ${facts(added)}`
         : `Added ${facts(added)}, revised ${updated}`
   return `${what}. Check them — anything wrong is yours to correct.`
+}
+
+/**
+ * A profile as this page holds it: the contact read once, here, where it arrives.
+ *
+ * It is read on the way IN and never on the way out to the block, because those four fields are
+ * controlled inputs and `readContact` trims. A sanitiser on the render path takes the space off
+ * the end of whatever somebody is halfway through typing — `Tom ` comes back `Tom`, and the next
+ * letter lands against the m — which leaves `Portland, OR` and every two-word name untypable by
+ * hand. What the person types is theirs until Save; the PUT reads it through `readContact` again,
+ * so nothing malformed is stored either way.
+ */
+function readProfile(profile: Profile): Profile {
+  return { ...profile, contact: readContact(profile.contact) }
+}
+
+/** Whether two contacts say the same four things — the page's test for "nothing changed". */
+function sameContact(a: ProfileContact, b: ProfileContact): boolean {
+  return (Object.keys(a) as (keyof ProfileContact)[]).every((key) => a[key] === b[key])
 }
 
 /** Strips the `data:application/pdf;base64,` prefix the FileReader adds. */
@@ -126,8 +155,9 @@ function ProfileVault() {
     apiFetch<Profile>('/api/profile')
       .then((profile) => {
         if (!live) return
-        setWorking(profile)
-        setSaved(profile)
+        const held = readProfile(profile)
+        setWorking(held)
+        setSaved(held)
       })
       .catch((err: unknown) => {
         if (live)
@@ -142,13 +172,18 @@ function ProfileVault() {
   }, [])
 
   const dirty = working !== null && saved !== null && JSON.stringify(working) !== JSON.stringify(saved)
+  // Rule 1's narrower reading of the same gap: what a changeset could land on wrongly, which is
+  // everything but the contact block. A profile stored before the block existed has a blank one
+  // filled by the first reading it is shown, and that must not be what refuses the reading.
+  const factsDirty = working !== null && saved !== null && differsBesideContact(working, saved)
 
   // Must run before the early returns below — hooks are not conditional.
   useUnsavedChanges(dirty)
 
   function land(profile: Profile) {
-    setWorking(profile)
-    setSaved(profile)
+    const held = readProfile(profile)
+    setWorking(held)
+    setSaved(held)
   }
 
   // Answering a gap turns it into a fact and drops it from the list — a working-copy edit like
@@ -230,6 +265,20 @@ function ProfileVault() {
       })
       setReview(next)
       setRound((n) => n + 1)
+      // The reading's contact fills whatever the block has left blank — an edit to the working
+      // copy like any other, unsaved until Save, and never over something already typed. It does
+      // not wait for Accept: accepting is about the facts, and a phone number the document states
+      // is not a claim anybody has to review.
+      //
+      // A contact the reading does not change is left alone rather than re-set, and the identity
+      // check is why: a fresh object holding the same four strings reads as an edit, and would
+      // put "Unsaved changes" on the bar over a save that would write nothing.
+      const read = (next.extraction as { contact?: unknown } | null)?.contact
+      setWorking((current) => {
+        if (!current) return current
+        const contact = mergeContact(current.contact, read)
+        return sameContact(contact, readContact(current.contact)) ? current : { ...current, contact }
+      })
     } catch (err) {
       const message =
         readable(err instanceof Error ? err.message : '') ||
@@ -262,10 +311,14 @@ function ProfileVault() {
     // profile that replaces the working copy — so an edit made in that window would be thrown
     // away by the very click meant to add to it. Rule 1's precondition, checked again here
     // rather than only at the button that started the reconcile.
-    if (dirty) {
+    if (factsDirty) {
       setReviewError('Save or discard your edits first — accepting replaces the whole profile.')
       return
     }
+    // What the block holds right now, which the apply route knows nothing about: it writes the
+    // accepted facts onto the profile as *stored*, so the contact the person typed — or the one
+    // this reading just filled in — is not in what comes back and would be dropped by landing it.
+    const pending = readContact(working?.contact)
     setBusy('saving')
     setReviewError('')
     try {
@@ -274,8 +327,13 @@ function ProfileVault() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ changeset: review.changeset }),
       })
-      // The route wrote it, so this is server truth and the page is clean again.
+      // The route wrote it, so this is server truth and the page is clean again — except for the
+      // contact, which is put back on the working copy alone. The bar then says there is
+      // something unsaved, which there honestly is.
       land(profile)
+      if (!sameContact(pending, readContact(profile.contact))) {
+        setWorking({ ...profile, contact: pending })
+      }
       setReview(null)
       setPdf(null)
       setNotes('')
@@ -318,7 +376,7 @@ function ProfileVault() {
 
   // One review at a time: starting another would throw away a proposal the person is
   // part-way through reading. Cancel is right there.
-  const canReview = source() !== null && busy === null && !dirty && review === null
+  const canReview = source() !== null && busy === null && !factsDirty && review === null
   // Filtered at render, never in storage: the eight standard answers below ask about work
   // authorization, notice and salary themselves, and an ingest reliably reports each missing
   // one as a gap too. `profile.gaps` keeps every word the model wrote.
@@ -458,7 +516,7 @@ function ProfileVault() {
               note="Usually takes 10–20 seconds."
             >
               <p className="max-w-[52ch] text-sm text-ink-3">
-                {dirty
+                {factsDirty
                   ? 'Save your edits first — this is compared against the saved profile.'
                   : review
                     ? 'Below is what it would change. Nothing is saved until you accept it.'
@@ -500,7 +558,9 @@ function ProfileVault() {
           <FactBank
             facts={working.facts}
             standardAnswers={working.standardAnswers}
+            contact={working.contact ?? blankContact()}
             onChange={(facts) => setWorking({ ...working, facts })}
+            onContactChange={(contact) => setWorking({ ...working, contact })}
           />
         </div>
 

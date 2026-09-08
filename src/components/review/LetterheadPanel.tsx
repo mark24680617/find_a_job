@@ -19,10 +19,10 @@ import type { Letterhead } from '@/lib/types'
  * Blanks are lines omitted, never lines guessed. A letterhead with nothing but a name prints
  * nothing but a name, and a letter with no name given ends at "Sincerely,".
  *
- * The fill beside the save is how most of those blanks get filled: the candidate's own facts and
- * the posting say five of the seven between them, and retyping a phone number per application was
- * the cheaper half of a trade that did not have to be paid at all. It writes into blanks only, so
- * the link is never the thing that loses what somebody typed.
+ * The fill beside the save is how most of those blanks get filled: the profile's contact block is
+ * read first — four fields the person edits once, copied across without asking anybody — and the
+ * candidate's facts and the posting are read for whatever it leaves. It writes into blanks only,
+ * so the link is never the thing that loses what somebody typed.
  */
 
 interface Props {

@@ -70,6 +70,39 @@ describe('PUT /api/profile', () => {
     expect(setProfile).toHaveBeenCalledWith('user-1', stored)
   })
 
+  it('takes a contact of four strings, made safe on the way in', async () => {
+    // The four letterhead fields, read through `readContact`: the editor sends what was typed
+    // and the 200-character cut and the control-character strip happen here, once.
+    await PUT(
+      put({
+        ...stored,
+        contact: { name: 'Tom Candidate', email: 'tom@x.test', phone: '', location: 'Portland,\nOR' },
+      }),
+    )
+    expect(setProfile).toHaveBeenCalledWith('user-1', {
+      ...stored,
+      contact: { name: 'Tom Candidate', email: 'tom@x.test', phone: '', location: 'Portland, OR' },
+    })
+  })
+
+  it('leaves a profile with no contact without one', async () => {
+    // Absent stays absent: nothing writes four blanks into a profile that was never asked.
+    await PUT(put(stored))
+    expect(setProfile).toHaveBeenCalledWith('user-1', stored)
+    expect('contact' in (setProfile.mock.calls[0][1] as object)).toBe(false)
+  })
+
+  it('400s on a contact that is not an object of four strings', async () => {
+    for (const bad of [
+      { ...stored, contact: 'Portland, OR' },
+      { ...stored, contact: { name: 'Tom Candidate' } },
+      { ...stored, contact: { name: 'Tom', email: 'tom@x.test', phone: 5550161, location: '' } },
+    ]) {
+      expect((await PUT(put(bad))).status).toBe(400)
+    }
+    expect(setProfile).not.toHaveBeenCalled()
+  })
+
   it('400s on a body that is not a profile, without touching the db', async () => {
     for (const bad of [
       null,
@@ -92,6 +125,7 @@ describe('POST /api/profile/ingest', () => {
     facts: [{ id: 'f1', claim: 'Cut p99 to 210ms', sourceSnippet: 'Cut p99', tags: ['perf'] }],
     standardAnswers: { work_authorization: 'UNKNOWN', notice_period: 'two weeks' },
     gaps: ['no links'],
+    contact: { name: 'Tom Candidate', email: '', phone: '(503) 555-0161', location: '' },
   }
 
   it('merges the ingest into the stored profile and returns the result', async () => {
@@ -105,6 +139,8 @@ describe('POST /api/profile/ingest', () => {
       standardAnswers: { work_authorization: 'US citizen', notice_period: 'two weeks' },
       voiceRules: stored.voiceRules,
       gaps: ['no links'],
+      // The stored profile had no contact at all, so all four fields are the ingest's.
+      contact: { name: 'Tom Candidate', email: '', phone: '(503) 555-0161', location: '' },
     }
     expect(setProfile).toHaveBeenCalledWith('user-1', merged)
     await expect(res.json()).resolves.toEqual(merged)
@@ -142,6 +178,7 @@ describe('POST /api/profile/ingest — from a URL', () => {
     facts: [{ id: 'f1', claim: 'Built Tessellate', sourceSnippet: 'Built Tessellate', tags: ['projects'] }],
     standardAnswers: {},
     gaps: [],
+    contact: { name: '', email: '', phone: '', location: '' },
   }
 
   // Long enough to clear the "this page is drawn by JavaScript" floor.

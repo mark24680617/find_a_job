@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { mergeIngest, mergeStory } from '@/lib/profileMerge'
-import type { Fact, Profile } from '@/lib/types'
+import {
+  blankContact,
+  differsBesideContact,
+  mergeIngest,
+  mergeStory,
+  readContact,
+} from '@/lib/profileMerge'
+import type { Fact, Profile, ProfileContact } from '@/lib/types'
 
 // The merge is where a second upload either extends the vault or quietly destroys it, so
 // every rule gets a case: ids never collide, hand-entered answers survive, voice rules are
@@ -26,7 +32,13 @@ const ingested = {
   facts: [fact('f1', 'Cut p99 latency to 210ms'), fact('f2', 'Mentors two engineers')],
   standardAnswers: { relocation: 'UNKNOWN' },
   gaps: ['no links to the project'],
+  contact: blankContact(),
 }
+
+const contact = (over: Partial<ProfileContact> = {}): ProfileContact => ({
+  ...blankContact(),
+  ...over,
+})
 
 describe('mergeIngest facts', () => {
   it('appends new facts after the existing ones', () => {
@@ -167,5 +179,135 @@ describe('mergeStory', () => {
   it('keeps an empty gaps list empty rather than filling it from the story', () => {
     const noGaps: Profile = { ...stored, gaps: [] }
     expect(mergeStory(noGaps, ingested).gaps).toEqual([])
+  })
+})
+
+// The contact block is the letterhead's first source, so what it does on a second reading is
+// what decides whether a phone number the candidate typed survives their next resume.
+
+describe('readContact', () => {
+  it('reads the four fields and nothing else', () => {
+    expect(
+      readContact({
+        name: 'Tom Candidate',
+        email: 'tom@example.test',
+        phone: '(503) 555-0161',
+        location: 'Portland, OR',
+        website: 'tom.example.test',
+      }),
+    ).toStrictEqual({
+      name: 'Tom Candidate',
+      email: 'tom@example.test',
+      phone: '(503) 555-0161',
+      location: 'Portland, OR',
+    })
+  })
+
+  it('reads anything that is not four strings as blank', () => {
+    for (const value of [undefined, null, 'a string', 42, { phone: 5551234 }]) {
+      expect(readContact(value).phone).toBe('')
+    }
+  })
+
+  it('folds newlines to a space and strips control characters', () => {
+    // A letterhead field is one line of an address block: a newline left in one reaches the PDF
+    // as a line the layout never planned for.
+    expect(readContact({ location: 'Portland,\r\nOR' }).location).toBe('Portland, OR')
+    expect(readContact({ name: 'Tom\u0007 Candidate' }).name).toBe('Tom Candidate')
+  })
+
+  it('cuts a field at the letterhead’s own 200', () => {
+    expect(readContact({ name: 'a'.repeat(400) }).name).toHaveLength(200)
+  })
+})
+
+describe('mergeIngest contact', () => {
+  // Read back through `readContact`, which is how every reader gets at it: the stored field is
+  // optional, so what the merge wrote is not a `ProfileContact` until something reads it as one.
+  const merge = (existing: Profile, incoming: Partial<ProfileContact>) =>
+    readContact(mergeIngest(existing, { ...ingested, contact: contact(incoming) }).contact)
+
+  const stored_ = (over: Partial<ProfileContact>): Profile => ({ ...stored, contact: contact(over) })
+
+  it('keeps a typed phone over the one the ingest read', () => {
+    // Same principle as standardAnswers: the human wins, and a document that disagrees with
+    // what they typed does not get to overwrite it.
+    expect(merge(stored_({ phone: '(503) 555-0161' }), { phone: '(206) 555-0114' }).phone).toBe(
+      '(503) 555-0161',
+    )
+  })
+
+  it('fills a blank location from the ingest', () => {
+    expect(merge(stored_({ phone: '(503) 555-0161' }), { location: 'Portland, OR' })).toStrictEqual({
+      name: '',
+      email: '',
+      phone: '(503) 555-0161',
+      location: 'Portland, OR',
+    })
+  })
+
+  it('changes nothing when the ingest states none of the four', () => {
+    const before = contact({ name: 'Tom Candidate', location: 'Portland, OR' })
+    expect(merge({ ...stored, contact: before }, {})).toStrictEqual(before)
+  })
+
+  it('takes the ingest’s contact into a profile that has none', () => {
+    expect(merge(stored, { name: 'Tom Candidate', email: 'tom@example.test' })).toStrictEqual({
+      name: 'Tom Candidate',
+      email: 'tom@example.test',
+      phone: '',
+      location: '',
+    })
+  })
+
+  it('reads a stored contact of the wrong shape rather than trusting it', () => {
+    const odd = { ...stored, contact: { phone: 5551234 } as unknown as ProfileContact }
+    expect(merge(odd, { phone: '(503) 555-0161' }).phone).toBe('(503) 555-0161')
+  })
+
+  it('merges the story’s contact the same way', () => {
+    const merged = mergeStory(stored_({ name: 'Tom Candidate' }), {
+      ...ingested,
+      contact: contact({ name: 'T. Candidate', phone: '(503) 555-0161' }),
+    })
+    expect(readContact(merged.contact)).toStrictEqual(
+      contact({ name: 'Tom Candidate', phone: '(503) 555-0161' }),
+    )
+  })
+})
+
+/**
+ * The comparison the profile screen's rule 1 is made of. A changeset names facts by id, so what
+ * it can land on wrongly is a fact edited locally — never a contact field, which is why the block
+ * a reading has just filled in must not be what refuses the reading's own facts.
+ */
+describe('differsBesideContact', () => {
+  it('reads a contact-only difference as no difference at all', () => {
+    const filled = { ...stored, contact: contact({ name: 'Tom Candidate' }) }
+    expect(differsBesideContact(filled, stored)).toBe(false)
+    expect(differsBesideContact(stored, filled)).toBe(false)
+  })
+
+  it('reads a blank contact on a profile that has none as no difference either', () => {
+    expect(differsBesideContact({ ...stored, contact: blankContact() }, stored)).toBe(false)
+  })
+
+  it('still sees an edited fact', () => {
+    const edited = {
+      ...stored,
+      contact: contact({ name: 'Tom Candidate' }),
+      facts: [fact('f1', 'Shipped the payments service in 2024'), stored.facts[1]],
+    }
+    expect(differsBesideContact(edited, stored)).toBe(true)
+  })
+
+  it('still sees an answered gap and a typed standard answer', () => {
+    expect(differsBesideContact({ ...stored, gaps: [] }, stored)).toBe(true)
+    expect(
+      differsBesideContact(
+        { ...stored, standardAnswers: { ...stored.standardAnswers, notice_period: 'Two weeks' } },
+        stored,
+      ),
+    ).toBe(true)
   })
 })

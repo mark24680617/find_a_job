@@ -70,6 +70,17 @@ describe('buildSampleWorld — the profile', () => {
     }
   })
 
+  it('gives Tom a contact with one blank field, so the letterhead has a line to fill', () => {
+    // The phone is blank on purpose: the seeded letterhead then shows one line the fill could
+    // not source, which is what the two-pass fill looks like when a document simply says nothing.
+    expect(world.profile.contact).toStrictEqual({
+      name: 'Tom Candidate',
+      email: 'tom.candidate@example.test',
+      phone: '',
+      location: 'Portland, OR',
+    })
+  })
+
   it('leaves two gaps open, because a profile with nothing missing teaches nothing', () => {
     expect(world.profile.gaps).toHaveLength(2)
     for (const gap of world.profile.gaps) expect(gap.trim()).not.toBe('')

@@ -1,17 +1,23 @@
-import { runLetterheadFill } from '@/ai/flows/letterheadFill'
+import { runLetterheadFill, type FilledLetterhead } from '@/ai/flows/letterheadFill'
 import { FlowOutputError } from '@/ai/genkit'
 import { requireUser } from '@/lib/auth'
 import { getApplication, getProfile, updateApplication } from '@/lib/db'
 import { isCoverLetter, readLetterhead } from '@/lib/letter/letterhead'
+import { readContact } from '@/lib/profileMerge'
+import { extractIdentity } from '@/lib/profileView'
 import type { Application, Letterhead } from '@/lib/types'
 
-// The letterhead's five sourceable fields, filled from the candidate's facts and the posting.
-// Node runtime (the default): `@/lib/db` reaches Firestore through firebase-admin and the Genkit
-// call needs it too; requireUser runs before either.
+// The letterhead's sourceable fields, filled in two passes — the profile first, the model only
+// for what the profile could not settle. Node runtime (the default): `@/lib/db` reaches Firestore
+// through firebase-admin and the Genkit call needs it too; requireUser runs before either.
+//
+// Pass 1 is deterministic and costs nothing: the contact block the candidate filled in on their
+// profile, then whatever their facts happen to say. It is also what keeps the four of them out of
+// a context window (spec §4.1) — they are copied across, never read by a model.
 //
 // It fills BLANKS. A field the person typed is an answer, and an answer is never replaced by
-// something a model read off a document — so clearing a field and asking again is how you accept
-// the sourced value after editing it away, and there is no other way to lose what you wrote.
+// something read off a document — so clearing a field and asking again is how you accept the
+// sourced value after editing it away, and there is no other way to lose what you wrote.
 //
 // Nothing here is logged: not the facts, not the posting, not what was filled. The whole of this
 // route's output is a letterhead, which is contact details for a real person.
@@ -21,8 +27,20 @@ type Ctx = { params: Promise<{ id: string }> }
 /** How much of the posting the model reads, as the draft route truncates it. */
 const JD_LIMIT = 6000
 
-/** The five fields the fill may write, in the order the panel draws them. */
+/** The four the profile can answer, and the five the model may. `phone` and `location` are both. */
+const FROM_PROFILE = ['name', 'email', 'phone', 'location'] as const
 const FILLABLE = ['phone', 'location', 'recipient', 'recipientTitle', 'companyAddress'] as const
+
+/** Every field either pass can write, in the order the panel draws them. */
+const FIELDS = [
+  'name',
+  'email',
+  'phone',
+  'location',
+  'recipient',
+  'recipientTitle',
+  'companyAddress',
+] as const
 
 export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   const user = await requireUser(req)
@@ -39,12 +57,36 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
 
   const profile = await getProfile(user.uid)
 
-  // Refused here rather than caught below. The prompt builder refuses a call with neither document
-  // by throwing a plain `Error`, not a `FlowOutputError`, so it would go past that catch and answer
-  // 500 — and a 500 is not something the panel can put in front of anybody. Both halves are
-  // reachable on their own: an application whose posting was never captured is what the clarify
-  // route refuses with its own 400, and a profile before any resume has been ingested has no facts.
-  if (!app.jdRaw.trim() && profile.facts.length === 0) {
+  // Pass 1, off the profile alone: the contact block first, and the facts for whichever of the
+  // four it leaves blank — `extractIdentity` is the accident this made deliberate, and it still
+  // counts, it is just no longer the only source. Both halves are read through `readContact`,
+  // because a claim tagged `location` is a whole sentence and what is stored here is one line of
+  // an address block that the PDF typesets. Computed against the letterhead as it stands now,
+  // which is what decides whether the model is worth calling at all.
+  const contact = readContact(profile.contact)
+  const fromFacts = readContact(extractIdentity(profile.facts, profile.standardAnswers))
+  const before = readLetterhead(q.letter)
+  const sourced: Partial<Letterhead> = {}
+  for (const key of FROM_PROFILE) {
+    if (before[key].trim() !== '') continue
+    const value = contact[key] || fromFacts[key]
+    if (value) sourced[key] = value
+  }
+
+  // Pass 2, and only when there is something left for it and something for it to read. A call
+  // that could fill nothing is a model call spent on nothing, and the prompt builder refuses a
+  // call with neither document by throwing a plain `Error`, not a `FlowOutputError`, so it would
+  // go past the catch below and answer 500 — which is not something the panel can put in front of
+  // anybody. Both documents are missing on their own often enough: an application whose posting
+  // was never captured is what the clarify route refuses with its own 400, and a profile before
+  // any resume has been ingested has no facts.
+  const stillBlank = FILLABLE.filter((key) => (sourced[key] ?? before[key]).trim() === '')
+  const hasDocument = app.jdRaw.trim() !== '' || profile.facts.length > 0
+
+  // Refused only when pass 1 found nothing either, which is the whole of "nothing to fill in
+  // from". A contact block on a profile with no facts, on an application whose posting was never
+  // captured, is four fields this route can still copy across without asking anybody.
+  if (stillBlank.length > 0 && !hasDocument && Object.keys(sourced).length === 0) {
     return Response.json(
       {
         error:
@@ -55,24 +97,33 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     )
   }
 
-  let filled
-  try {
-    filled = await runLetterheadFill({
-      facts: profile.facts,
-      jdText: app.jdRaw.slice(0, JD_LIMIT),
-      // The company and the role name which role's office the posting is being read for. Off
-      // the interpretation when there is one, off the record when there is not: the draft route
-      // refuses without a parsed posting because rule 4 is judged on its `scope`, and nothing
-      // here is judged on anything the interpretation adds.
-      parsed: app.parsed ?? { company: app.company, role: app.role },
-    })
-  } catch (error) {
-    // The flow could not read the two documents into a letterhead. Its message is the only
-    // account of that, so it reaches the wire as a 422 the panel can show rather than a 500.
-    if (error instanceof FlowOutputError) {
-      return Response.json({ error: error.message, fillFailed: true }, { status: 422 })
+  let filled: FilledLetterhead = {}
+  if (stillBlank.length > 0 && hasDocument) {
+    try {
+      filled = await runLetterheadFill({
+        facts: profile.facts,
+        jdText: app.jdRaw.slice(0, JD_LIMIT),
+        // The company and the role name which role's office the posting is being read for. Off
+        // the interpretation when there is one, off the record when there is not: the draft route
+        // refuses without a parsed posting because rule 4 is judged on its `scope`, and nothing
+        // here is judged on anything the interpretation adds.
+        parsed: app.parsed ?? { company: app.company, role: app.role },
+      })
+    } catch (error) {
+      // The flow could not read the two documents into a letterhead. Its message is the only
+      // account of that, so it reaches the wire as a 422 the panel can show rather than a 500.
+      if (error instanceof FlowOutputError) {
+        return Response.json({ error: error.message, fillFailed: true }, { status: 422 })
+      }
+      throw error
     }
-    throw error
+  }
+
+  // Both passes' answers in one place, pass 1's winning where they overlap on the phone or the
+  // location: it is the person's own, and it was not read off a document by a model.
+  for (const key of FILLABLE) {
+    const value = filled[key]
+    if (value !== undefined && sourced[key] === undefined) sourced[key] = value
   }
 
   // Read again after it. The model call takes seconds and the record can move underneath it, and
@@ -91,8 +142,8 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   // a run of spaces has to read as blank rather than as a typed answer nobody may overwrite.
   const stored = readLetterhead(after.questions[at].letter)
   const taken: Partial<Letterhead> = {}
-  for (const key of FILLABLE) {
-    const value = filled[key]
+  for (const key of FIELDS) {
+    const value = sourced[key]
     if (value !== undefined && stored[key].trim() === '') taken[key] = value
   }
 

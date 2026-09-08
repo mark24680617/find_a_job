@@ -239,3 +239,138 @@ describe('POST .../cover-letter/letterhead — the merge', () => {
     })
   })
 })
+
+/**
+ * Pass 1: the profile, read deterministically and never through the model. The contact block the
+ * candidate filled in once is the first source; their facts are the second; the model is asked
+ * only for what neither of those two settled. It is also the half that keeps the phone and the
+ * location out of a context window — they are copied, not read.
+ */
+describe('POST .../cover-letter/letterhead — from the profile first', () => {
+  const withContact = (over: Partial<Record<string, string>> = {}) => ({
+    facts: [],
+    standardAnswers: {},
+    voiceRules: [],
+    gaps: [],
+    contact: { name: '', email: '', phone: '', location: '', ...over },
+  })
+
+  it('fills a blank phone from the contact, and never asks the model for it', async () => {
+    getProfile.mockResolvedValue(withContact({ phone: '(503) 555-0161' }))
+    runLetterheadFill.mockResolvedValue({ recipient: 'Dana Wu' })
+
+    const res = await POST(req(), ctx())
+    const out = await body(res)
+    expect(out.filled).toStrictEqual(['phone', 'recipient'])
+    expect(out.question?.letter?.phone).toBe('(503) 555-0161')
+    // The model still ran — the recipient was blank — but the phone was never its to answer.
+    expect(runLetterheadFill).toHaveBeenCalledTimes(1)
+    expect(writtenQuestions()[1].letter?.phone).toBe('(503) 555-0161')
+  })
+
+  it('keeps a typed phone over both the contact and the model', async () => {
+    getApplication.mockResolvedValue(
+      application({ questions: [formQuestion(), letterQuestion({ phone: '(206) 555-0114' })] }),
+    )
+    getProfile.mockResolvedValue(withContact({ phone: '(503) 555-0161' }))
+    runLetterheadFill.mockResolvedValue({ phone: '(415) 555-0180' })
+
+    const out = await body(await POST(req(), ctx()))
+    expect(out.filled).toStrictEqual([])
+    expect(out.question?.letter?.phone).toBe('(206) 555-0114')
+    expect(updateApplication).not.toHaveBeenCalled()
+  })
+
+  // A bank that happens to hold a phone number — which before this was the only way the fill
+  // ever saw one, and the reason it so often filled nothing at all.
+  const phoneFact = (): Fact => ({
+    id: 'f2',
+    claim: 'Reachable on 503-555-0161',
+    sourceSnippet: 'Portland, OR · 503-555-0161',
+    tags: ['contact'],
+  })
+
+  it('falls back to the facts for a field the contact leaves blank', async () => {
+    // `extractIdentity` is the old accident made deliberate: whatever an ingest happened to
+    // write into the bank still counts, it is just no longer the only source.
+    getProfile.mockResolvedValue({ ...withContact(), facts: [phoneFact()] })
+    runLetterheadFill.mockResolvedValue({})
+
+    const out = await body(await POST(req(), ctx()))
+    expect(out.filled).toStrictEqual(['phone'])
+    expect(out.question?.letter?.phone).toBe('503-555-0161')
+  })
+
+  it('prefers the contact to the facts where both have something', async () => {
+    getProfile.mockResolvedValue({
+      ...withContact({ phone: '(206) 555-0114' }),
+      facts: [phoneFact()],
+    })
+    runLetterheadFill.mockResolvedValue({})
+
+    const out = await body(await POST(req(), ctx()))
+    expect(out.question?.letter?.phone).toBe('(206) 555-0114')
+  })
+
+  it('does not call the model when pass 1 left none of its five blank', async () => {
+    getApplication.mockResolvedValue(
+      application({
+        questions: [
+          formQuestion(),
+          letterQuestion({
+            recipient: 'Dana Wu',
+            recipientTitle: 'Head of Engineering',
+            companyAddress: '1 Marram Way',
+          }),
+        ],
+      }),
+    )
+    getProfile.mockResolvedValue(withContact({ phone: '(503) 555-0161', location: 'Portland, OR' }))
+
+    const out = await body(await POST(req(), ctx()))
+    expect(runLetterheadFill).not.toHaveBeenCalled()
+    expect(out.filled).toStrictEqual(['phone', 'location'])
+    expect(out.question?.letter?.location).toBe('Portland, OR')
+  })
+
+  it('fills from the contact alone when there is no posting and no facts', async () => {
+    // The 422 is about having nothing to fill in from, and a contact block naming four fields is
+    // something to fill in from. Nothing is left for the model to read, so it is simply not asked.
+    getApplication.mockResolvedValue(application({ jdRaw: '   ' }))
+    getProfile.mockResolvedValue(withContact({ phone: '(503) 555-0161', location: 'Portland, OR' }))
+
+    const res = await POST(req(), ctx())
+    expect(res.status).toBe(200)
+    expect(runLetterheadFill).not.toHaveBeenCalled()
+    expect((await body(res)).filled).toStrictEqual(['phone', 'location'])
+    expect(writtenQuestions()[1].letter?.location).toBe('Portland, OR')
+  })
+
+  it('cuts what the facts say to a letterhead line, as every other writer does', async () => {
+    // `extractIdentity` hands back the whole claim, and a claim is a sentence. Every other writer
+    // of these fields caps them at 200 and keeps them to one line, so this one does too — a
+    // stored letterhead is what the PDF typesets.
+    const sprawl = `Portland, OR\n(open to remote across the US, ${'and to relocating for the right team, '.repeat(6)}for the right one)`
+    getProfile.mockResolvedValue({
+      ...withContact(),
+      facts: [{ id: 'f3', claim: sprawl, sourceSnippet: '', tags: ['location'] }],
+    })
+    runLetterheadFill.mockResolvedValue({})
+
+    const location = (await body(await POST(req(), ctx()))).question?.letter?.location ?? ''
+    expect(Array.from(location)).toHaveLength(200)
+    expect(location).not.toContain('\n')
+    expect(location.startsWith('Portland, OR (open to remote across the US,')).toBe(true)
+  })
+
+  it('fills a blank name and email too — the account is not the only place they live', async () => {
+    getApplication.mockResolvedValue(
+      application({ questions: [formQuestion(), { ...letterQuestion(), letter: undefined }] }),
+    )
+    getProfile.mockResolvedValue(withContact({ name: 'Tom Candidate', email: 'tom@example.test' }))
+    runLetterheadFill.mockResolvedValue({})
+
+    const out = await body(await POST(req(), ctx()))
+    expect(out.filled).toStrictEqual(['name', 'email'])
+  })
+})

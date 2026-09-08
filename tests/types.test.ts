@@ -65,7 +65,9 @@ function statusLabel(status: AppStatus): string {
   }
 }
 
+// A profile with a contact — the four letterhead fields, a blank one where nothing states it.
 const profile: Profile = {
+  contact: { name: 'Mark', email: 'mark@example.test', phone: '', location: 'Portland, OR' },
   facts: [
     {
       id: 'f1',
@@ -77,6 +79,15 @@ const profile: Profile = {
   standardAnswers: { workAuthorization: 'UNKNOWN' },
   voiceRules: [{ rule: 'No "passionate"', evidence: 'resume.txt', createdAt: '2026-08-27T00:00:00Z' }],
   gaps: ['desired compensation'],
+}
+
+// And one without: `contact` is optional because every profile stored before it exists without
+// one, so a reader that demanded it would be a reader that crashes on every account.
+const profileBeforeContact: Profile = {
+  facts: profile.facts,
+  standardAnswers: profile.standardAnswers,
+  voiceRules: profile.voiceRules,
+  gaps: profile.gaps,
 }
 
 const application: Application = {
@@ -243,6 +254,13 @@ describe('domain types', () => {
     expect(ARTIFACT_SCOPES).toHaveLength(3)
     expect(ROUND_TYPES).toHaveLength(8)
     expect(QUESTION_KINDS.map(kindLabel)).toEqual(['Cover letter'])
+  })
+
+  it('carries a contact, or none at all', () => {
+    expect(profile.contact?.location).toBe('Portland, OR')
+    // Blank rather than absent: a field is either stated or empty, never guessed.
+    expect(profile.contact?.phone).toBe('')
+    expect(profileBeforeContact.contact).toBeUndefined()
   })
 
   it('narrows AppStatus exhaustively', () => {

@@ -122,6 +122,13 @@ function report(out: ProfileIngestOut, input: string): void {
     console.log(`  ${key}: ${value}`)
   }
 
+  // The letterhead's first source. A blank is the honest answer for a document that does not
+  // state the field, so it is printed as one rather than left off.
+  console.log('\ncontact')
+  for (const [key, value] of Object.entries(out.contact)) {
+    console.log(`  ${key}: ${value || '(not stated)'}`)
+  }
+
   console.log(`\ngaps (${out.gaps.length})`)
   for (const gap of out.gaps) console.log(`  - ${gap}`)
 

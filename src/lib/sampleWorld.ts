@@ -86,6 +86,15 @@ Marram Systems is an equal opportunity employer.`
 
 function buildProfile(now: Date): Profile {
   return {
+    // The blank phone is deliberate: the seeded letterhead then shows one line neither the
+    // contact nor the facts can source, which is what an honest fill looks like.
+    contact: {
+      name: 'Tom Candidate',
+      email: 'tom.candidate@example.test',
+      phone: '',
+      location: 'Portland, OR',
+    },
+
     facts: [
       {
         id: 'f1',

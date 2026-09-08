@@ -40,18 +40,35 @@ describe('ProfileIngestOutSchema', () => {
     ],
     standardAnswers: { work_authorization: 'UNKNOWN', notice_period: 'two weeks' },
     gaps: ['no employment dates for the 2024 role'],
+    contact: {
+      name: 'Tom Candidate',
+      email: 'tom.candidate@example.test',
+      phone: '',
+      location: 'Portland, OR',
+    },
   }
 
   it('accepts a fully populated ingest result', () => {
     expect(ProfileIngestOutSchema.parse(valid)).toEqual(valid)
   })
 
-  it('accepts empty facts, answers and gaps', () => {
-    expect(ProfileIngestOutSchema.parse({ facts: [], standardAnswers: {}, gaps: [] })).toEqual({
-      facts: [],
-      standardAnswers: {},
-      gaps: [],
-    })
+  it('accepts empty facts, answers and gaps, and a contact of four blanks', () => {
+    const blank = { name: '', email: '', phone: '', location: '' }
+    expect(
+      ProfileIngestOutSchema.parse({ facts: [], standardAnswers: {}, gaps: [], contact: blank }),
+    ).toEqual({ facts: [], standardAnswers: {}, gaps: [], contact: blank })
+  })
+
+  it('rejects an extraction with no contact at all', () => {
+    // Required rather than optional on purpose: an omission is then a schema miss the retry
+    // sees and can fix, where an optional field would come back missing and read as four
+    // blanks nobody asked for.
+    expect(ProfileIngestOutSchema.safeParse(without(valid, 'contact')).success).toBe(false)
+  })
+
+  it('rejects a contact missing one of its four fields', () => {
+    const bad = { ...valid, contact: { name: 'Tom Candidate', email: '', phone: '' } }
+    expect(ProfileIngestOutSchema.safeParse(bad).success).toBe(false)
   })
 
   it('rejects a fact without its source snippet', () => {

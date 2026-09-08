@@ -17,6 +17,9 @@ const out = {
   ],
   standardAnswers: { work_authorization: 'UNKNOWN' },
   gaps: ['no end date for the Fenwick role'],
+  // Required by the schema, blank where the document says nothing — a resume with a header
+  // states some of the four, and two pasted sentences state none.
+  contact: { name: 'Tom Candidate', email: '', phone: '', location: 'Portland, OR' },
 }
 
 interface SentRequest {

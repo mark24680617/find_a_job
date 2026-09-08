@@ -107,6 +107,9 @@ const ingested: ProfileIngestOut = {
   ],
   standardAnswers: {},
   gaps: ['no date for the billing incident'],
+  // A story states none of the four, which is the ordinary case for one: the contact comes off
+  // a resume header, and there is no header on two sentences about a Sunday.
+  contact: { name: '', email: '', phone: '', location: '' },
 }
 
 /** The profile as it stands once that story has been merged in — f2, and the gaps untouched. */

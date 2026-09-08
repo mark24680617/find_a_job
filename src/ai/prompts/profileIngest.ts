@@ -40,6 +40,9 @@ Rules:
   else the string "UNKNOWN":
   work_authorization, visa_sponsorship_needed, relocation, remote_onsite_preference,
   earliest_start_date, notice_period, salary_expectation, security_clearance.
+- contact: the candidate's name, email, phone and location exactly as the document states
+  them — location as "City, State" or "City, Country", never a street. A field the document
+  does not state is the empty string "". Never infer any of the four.
 - gaps: list what a job application will likely need that this input does not contain
   (missing dates, unexplained employment gaps, missing metrics, missing links). Never list a
   gap that one of the standardAnswers keys above already covers — those are asked separately.

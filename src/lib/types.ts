@@ -1,8 +1,14 @@
 export interface Fact { id: string; claim: string; sourceSnippet: string; tags: string[] }
 export interface VoiceRule { rule: string; evidence: string; createdAt: string }
+/** Who the candidate is on a letterhead. Blank means not stated — never guessed. */
+export interface ProfileContact { name: string; email: string; phone: string; location: string }
 export interface Profile {
   facts: Fact[]; standardAnswers: Record<string, string>
   voiceRules: VoiceRule[]; gaps: string[]
+  // Optional because every profile stored before this existed lacks it, and a reader that
+  // demanded it would be a reader that crashes on every account. `readContact` is applied on
+  // every read back, so an absent contact and a malformed one are the same four blanks.
+  contact?: ProfileContact
 }
 export type AppStatus = 'draft' | 'applied' | 'interviewing' | 'offer' | 'rejected'
 export type GatePosture = 'escape-clause' | 'silent' | 'explicit'
@@ -39,7 +45,9 @@ export type QuestionKind = 'cover-letter'
  * strings, blanks allowed — a blank is a line the PDF omits, never a line it guesses. Lives on
  * the cover-letter question, not on the profile: the profile document is replaced whole by the
  * editor's PUT and by two routes' setProfile, and a field there is a field three writers can
- * clobber. `companyAddress` may hold several lines, newline-separated.
+ * clobber. The four that are the candidate's own rather than this application's are kept on the
+ * profile as well, as `ProfileContact`, and the fill copies them across into these.
+ * `companyAddress` may hold several lines, newline-separated.
  */
 export interface Letterhead {
   name: string; email: string; phone: string; location: string

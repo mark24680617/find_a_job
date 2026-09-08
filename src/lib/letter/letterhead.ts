@@ -8,8 +8,9 @@ import type { AskHuman, Letterhead, Question } from '@/lib/types'
  * The letterhead lives on the question rather than on the profile because the profile document
  * is replaced whole by the editor's PUT and by two routes' setProfile: a contact field there is
  * a field three writers can clobber, and the one place a letterhead is ever read is the letter
- * it belongs to. The cost is retyping a phone number per application, which is the cheaper half
- * of the trade.
+ * it belongs to. What that cost — retyping a phone number per application — is now spared by
+ * `Profile.contact`: four fields the person edits on their profile, which the fill route copies
+ * into the blanks of this letterhead rather than storing a letterhead there.
  *
  * Pure and free of imports beyond a type, because both halves of the product read it: the pane
  * and the letterhead panel are client components, and the draft route, the finalize route and

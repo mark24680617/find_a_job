@@ -1,5 +1,6 @@
 import { requireUser } from '@/lib/auth'
 import { getProfile, setProfile } from '@/lib/db'
+import { readContact } from '@/lib/profileMerge'
 import type { Fact, Profile, VoiceRule } from '@/lib/types'
 
 // The profile vault. GET reads it, PUT replaces it — the editor owns the whole document,
@@ -13,14 +14,28 @@ import type { Fact, Profile, VoiceRule } from '@/lib/types'
  */
 function asProfile(body: unknown): Profile | null {
   if (typeof body !== 'object' || body === null) return null
-  const { facts, standardAnswers, voiceRules, gaps } = body as Record<string, unknown>
+  const { facts, standardAnswers, voiceRules, gaps, contact } = body as Record<string, unknown>
   if (!Array.isArray(facts) || !Array.isArray(voiceRules) || !Array.isArray(gaps)) return null
   if (!isStringRecord(standardAnswers)) return null
   if (!gaps.every((g) => typeof g === 'string')) return null
   if (!facts.every(isFact) || !voiceRules.every(isVoiceRule)) return null
-  // Only these four keys are written: users/{uid} holds the profile and nothing else, and
-  // a full replace would otherwise let any extra key in the request body live there too.
-  return { facts: facts as Fact[], standardAnswers, voiceRules: voiceRules as VoiceRule[], gaps }
+  // Only these keys are written: users/{uid} holds the profile and nothing else, and a full
+  // replace would otherwise let any extra key in the request body live there too.
+  const profile: Profile = {
+    facts: facts as Fact[],
+    standardAnswers,
+    voiceRules: voiceRules as VoiceRule[],
+    gaps,
+  }
+  // Absent stays absent — a profile nobody has filled a letterhead for is not given four
+  // blanks. Anything else has to be four strings: a number where a phone goes is a client
+  // sending something other than what the editor sends, and it is refused rather than coerced,
+  // because the fields the letterhead prints are not a place to be lenient.
+  if (contact !== undefined) {
+    if (!hasStrings(contact, ['name', 'email', 'phone', 'location'])) return null
+    profile.contact = readContact(contact)
+  }
+  return profile
 }
 
 /** True when `value` is an object carrying a string at each of `keys`. */

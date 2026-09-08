@@ -130,6 +130,13 @@ describe('extractIdentity', () => {
     expect(id.website).toBe('https://tomcandidate.dev/projects')
   })
 
+  it('keeps a bracketed area code whole', () => {
+    // The span used to start at the first digit, which left `503) 555-0161` — a number carrying
+    // half a bracket. The letterhead's first pass copies this one into what the PDF prints.
+    const id = extractIdentity([fact({ id: 'f1', claim: 'Reachable on (503) 555-0161' })])
+    expect(id.phone).toBe('(503) 555-0161')
+  })
+
   it('takes a location only from a tagged fact', () => {
     const id = extractIdentity([fact({ id: 'f1', tags: ['location'], claim: 'Portland, Oregon' })])
     expect(id.location).toBe('Portland, Oregon')
