@@ -40,7 +40,7 @@ const application = (q: Question): Application => ({
   createdAt: '2026-08-27T00:00:00.000Z',
 })
 
-const html = (q: Question) =>
+const html = (q: Question, letterFilling = false) =>
   renderToStaticMarkup(
     createElement(ReviewPane, {
       app: application(q),
@@ -49,6 +49,7 @@ const html = (q: Question) =>
       onQuestionChange: () => {},
       onAppChange: () => {},
       onFactsChanged: () => {},
+      letterFilling,
       onDirtyChange: () => {},
       onDelete: () => Promise.resolve(),
     }),
@@ -110,6 +111,36 @@ describe('ReviewPane — a cover letter', () => {
     )
     expect(markup).toContain('<button type="button" class="btn btn-quiet">Download PDF</button>')
     expect(markup).not.toContain('Save the letter to export it.')
+  })
+
+  // A fill is the same hazard as an unsaved letterhead and is held the same way: it PATCHes the
+  // record a second or two later, and a draft started in that window is pinned to the letterhead
+  // as it was — "Dear Hiring Manager," over a recipient block that lands on a name.
+  it('holds every control that starts a draft while a fill is out, and says which it is', () => {
+    const markup = html(letterQuestion(), true)
+    expect(markup).toContain(
+      'Filling in the letterhead — the draft addresses and signs the letter from what it lands on.',
+    )
+    expect(markup).not.toContain('Save the letterhead first')
+    expect(markup).toContain(
+      '<button type="button" class="btn btn-primary" disabled="">Set up this answer</button>',
+    )
+    expect(markup).toContain(
+      '<button type="button" class="btn btn-quiet" disabled="">Draft without setup</button>',
+    )
+    // The panel agrees with the pane about what is happening, off the same flag.
+    expect(markup).toContain('Filling in…')
+  })
+
+  it('holds nothing back when no fill is out', () => {
+    const markup = html(letterQuestion())
+    expect(markup).not.toContain('Filling in the letterhead')
+    expect(markup).toContain(
+      '<button type="button" class="btn btn-primary">Set up this answer</button>',
+    )
+    expect(markup).toContain(
+      '<button type="button" class="btn btn-quiet">Draft without setup</button>',
+    )
   })
 
   it('calls a letter past the ceiling what it is', () => {

@@ -17,6 +17,7 @@
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts take-home "<company>" "<role>" <brief.txt>
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts assignment <file.pdf>
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts cover-letter [no-story]
+ * npx tsx --env-file=.env.local scripts/smoke-flows.ts letterhead
  *
  * This spends a real API call, so it is a thing you run deliberately — the unit suite
  * never touches the network. `--env-file` is what supplies GEMINI_API_KEY.
@@ -37,6 +38,7 @@ import { runPrepBrief } from '../src/ai/flows/prepBrief'
 import { runMockTurn } from '../src/ai/flows/mockTurn'
 import { runMockDebrief } from '../src/ai/flows/mockDebrief'
 import { runAssignmentTranscribe } from '../src/ai/flows/assignmentTranscribe'
+import { runLetterheadFill } from '../src/ai/flows/letterheadFill'
 import { describeStage } from '../src/ai/prompts/mockTurn'
 import { mergeStory } from '../src/lib/profileMerge'
 import { researchProcess, type GatherTrace } from '../src/lib/research/pipeline'
@@ -68,6 +70,7 @@ import type {
   FormParseOut,
   InterviewInterpretOut,
   JobInterpretOut,
+  LetterheadFillOut,
   MockDebriefOut,
   MockTurnOut,
   ProfileIngestOut,
@@ -1583,6 +1586,83 @@ async function smokeCoverLetter(withStory: boolean): Promise<void> {
   console.log(`\npdf: ${bytes.length} bytes, dated ${dateIso} -> ${LETTER_PDF.pathname}`)
 }
 
+// ---- letterhead: the five fields the two documents can fill in ----------------------------
+// The same Marram posting and the same eight facts the cover-letter mode uses, read for the
+// letterhead rather than for the letter. There is nothing to accept or reject here: the flow
+// returns a value only where a document states it, and the run is worth making because what it
+// mostly returns is nulls — the posting names no recipient and no office, so the honest output is
+// four blank lines and one location, and a mode that could not show that could not show the
+// design at all.
+
+/**
+ * Which document a quote is actually in, worked out here rather than taken from the flow. The
+ * flow drops a value and says nothing about why; the two corpora are what makes the difference
+ * between "nobody wrote this" and "the right words, read out of the wrong document" — which is
+ * rule 2's whole subject and the failure a reader of a transcript wants named.
+ */
+function quotedFrom(quote: string): string {
+  const q = normalizeWs(quote)
+  const found = [
+    normalizeWs(TOM_FACTS.map((f) => `${f.claim}\n${f.sourceSnippet}`).join('\n')).includes(q)
+      ? 'the facts'
+      : '',
+    normalizeWs(MARRAM_JD).includes(q) ? 'the posting' : '',
+  ].filter(Boolean)
+  return found.join(' and ') || 'NEITHER DOCUMENT'
+}
+
+/** What the model returned for one field, and what the flow did with it. */
+function reportFill(
+  field: string,
+  returned: LetterheadFillOut[keyof LetterheadFillOut],
+  kept: string | undefined,
+): void {
+  if (!returned) {
+    console.log(`  ${field.padEnd(15)} not stated`)
+    return
+  }
+  console.log(`  ${field.padEnd(15)} ${kept === undefined ? 'DROPPED' : 'filled'}: ${JSON.stringify(returned.text)}`)
+  console.log(`      quote (${quotedFrom(returned.quote)}): ${JSON.stringify(returned.quote)}`)
+  if (kept !== undefined && kept !== returned.text.trim()) {
+    console.log(`      stored as: ${JSON.stringify(kept)}`)
+  }
+}
+
+async function smokeLetterhead(): Promise<void> {
+  console.log(
+    `letterhead: ${MARRAM.role} @ ${MARRAM.company} x ${TOM_FACTS.length} facts,` +
+      ` ${MARRAM_JD.length} characters of posting`,
+  )
+
+  // A pass-through that keeps the model's own answer. The flow returns only what survived its
+  // guard, and a transcript that showed the survivors alone could not tell a field nobody stated
+  // from a field stated in the wrong document — which is the one thing this run is for.
+  let returned: LetterheadFillOut | null = null
+  const generate: GenerateCall = async (options) => {
+    const response = await callGenkit(options)
+    returned = response.output as LetterheadFillOut
+    return response
+  }
+
+  const started = Date.now()
+  const filled = await runLetterheadFill(
+    { facts: TOM_FACTS, jdText: MARRAM_JD, parsed: { company: MARRAM.company, role: MARRAM.role } },
+    generate,
+  )
+  const seconds = since(started)
+
+  console.log('\nfields')
+  const out: LetterheadFillOut | null = returned
+  if (out === null) throw new Error('the model returned nothing at all')
+  for (const field of ['phone', 'location', 'recipient', 'recipientTitle', 'companyAddress'] as const) {
+    reportFill(field, out[field], filled[field])
+  }
+
+  const kept = Object.keys(filled)
+  console.log(`\nfilled ${kept.length} of 5: ${kept.join(', ') || '(none)'}`)
+  console.log(`read in ${seconds}s`)
+}
+
 /**
  * The third positional: which stage of the saved loop to practise, 1 when it is absent. A typo
  * throws rather than falling back — practising stage 1 and filing it as stage 11 is the one
@@ -1618,6 +1698,7 @@ async function main(): Promise<void> {
   if (flow === 'mock' && file) return smokeMock(file, stageOrderArg(role))
   if (flow === 'take-home' && file && role && brief) return smokeTakeHome(file, role, brief)
   if (flow === 'assignment' && file) return smokeAssignment(file)
+  if (flow === 'letterhead') return smokeLetterhead()
   // Only the two forms the usage line names. `file !== 'no-story'` would read a typo —
   // `nostory`, `--no-story`, `story` — as "run with the telling", spend a real API call on the
   // case nobody asked for, and print a transcript that looks entirely correct; which of the two
@@ -1632,7 +1713,7 @@ async function main(): Promise<void> {
       ' interview | reconcile | process "<company>" "<role>" |' +
       ' brief <transcript> [stageOrder] | mock <transcript> [stageOrder] |' +
       ' take-home "<company>" "<role>" <brief.txt> | assignment <file.pdf> |' +
-      ' cover-letter [no-story]',
+      ' cover-letter [no-story] | letterhead',
   )
   process.exitCode = 1
 }

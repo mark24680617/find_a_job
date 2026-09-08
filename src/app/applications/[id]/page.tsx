@@ -1,7 +1,7 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { use, useCallback, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, use, useCallback, useEffect, useState } from 'react'
 import { AppShell, useCurrentUser, useUnsavedChanges } from '@/components/AppShell'
 import { InterviewsSection } from '@/components/interviews/InterviewsSection'
 import { ProcessSection } from '@/components/process/ProcessSection'
@@ -12,7 +12,7 @@ import { QuestionsIntake } from '@/components/wizard/QuestionsIntake'
 import { apiFetch } from '@/lib/apiFetch'
 import { isCoverLetter, newCoverLetter } from '@/lib/letter/letterhead'
 import { readable } from '@/lib/readable'
-import { logInterviewPatch, pastApplying, showsProcess } from '@/lib/stage'
+import { intakeOpenFromSearch, logInterviewPatch, pastApplying, showsProcess } from '@/lib/stage'
 import type { Application, Fact, InterviewRound, Profile, Question } from '@/lib/types'
 
 /**
@@ -39,13 +39,19 @@ export default function ApplicationPage({ params }: PageProps<'/applications/[id
   const { id } = use(params)
   return (
     <AppShell>
-      <ApplicationWorkspace id={id} />
+      {/* The workspace reads the query string, which Next requires a boundary around so the
+          rest of the route can still be prerendered. There is nothing to show while it waits:
+          the workspace's own first paint is the loading line. */}
+      <Suspense>
+        <ApplicationWorkspace id={id} />
+      </Suspense>
     </AppShell>
   )
 }
 
 function ApplicationWorkspace({ id }: { id: string }) {
   const router = useRouter()
+  const search = useSearchParams()
   // The account's own name and email, which seed the letterhead when the letter is created —
   // this screen renders inside the shell, so they are already here and nobody types them twice.
   const user = useCurrentUser()
@@ -64,6 +70,10 @@ function ApplicationWorkspace({ id }: { id: string }) {
   const [reparsing, setReparsing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [letterError, setLetterError] = useState('')
+  // A letterhead fill is running, started by the create below. Held here rather than in the panel
+  // because the panel is mounted by the render that follows the create, and the request is
+  // already out by then; the panel is told so it can say so.
+  const [letterFilling, setLetterFilling] = useState(false)
 
   // Closed to begin with, and only ever moved by the disclosure's own control: a record that
   // becomes past-applying while the page is open folds because `collapsible` flips, and this
@@ -72,7 +82,11 @@ function ApplicationWorkspace({ id }: { id: string }) {
 
   const [marking, setMarking] = useState(false)
   const [markError, setMarkError] = useState('')
-  const [logging, setLogging] = useState(false)
+  // The board's move to Interviewing sends the person here with `log=1`, which asks for the
+  // notice intake to be open on arrival — the same state "Log an interview" sets. Read once,
+  // when the state is created, so closing the box does not reopen it and the address never has
+  // to be rewritten to keep up with the screen.
+  const [logging, setLogging] = useState(() => intakeOpenFromSearch(search.toString()))
   const [stageError, setStageError] = useState('')
 
   /**
@@ -188,7 +202,27 @@ function ApplicationWorkspace({ id }: { id: string }) {
       })
       setApp(updated)
       // The letter is the row that was just appended, and it is what the person came for.
-      setSelected(updated.questions.length - 1)
+      const at = updated.questions.length - 1
+      setSelected(at)
+      // The account gives a name and an email; the candidate's own facts and the posting say five
+      // of the other fields between them, and this is the moment to go and get them — a blank
+      // letterhead is the thing somebody would otherwise sit and retype per application.
+      //
+      // Quiet on failure. The letter exists, the letterhead is what the account gave, and the
+      // panel's own link is how it gets tried again — an error line about a letterhead would say
+      // nothing about the thing the person just asked for.
+      setLetterFilling(true)
+      try {
+        const filled = await apiFetch<{ question: Question }>(
+          `/api/applications/${app.id}/cover-letter/letterhead`,
+          { method: 'POST' },
+        )
+        applyQuestion(at, filled.question)
+      } catch {
+        // Nothing to say; the fields are blank and the link is there.
+      } finally {
+        setLetterFilling(false)
+      }
     } catch (err) {
       setLetterError(
         readable(err instanceof Error ? err.message : '') ||
@@ -485,6 +519,7 @@ function ApplicationWorkspace({ id }: { id: string }) {
                 onQuestionChange={applyQuestion}
                 onAppChange={setApp}
                 onFactsChanged={loadFacts}
+                letterFilling={letterFilling}
                 onDirtyChange={setSelectedDirty}
                 onDelete={() => deleteQuestion(current)}
               />

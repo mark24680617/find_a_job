@@ -6,6 +6,7 @@ import {
   FormParseOutSchema,
   InterviewInterpretOutSchema,
   JobInterpretOutSchema,
+  LetterheadFillOutSchema,
   MockDebriefOutSchema,
   MockTurnOutSchema,
   PrepBriefOutSchema,
@@ -503,5 +504,33 @@ describe('MockDebriefOutSchema', () => {
   it('rejects an unsupported sentence with no reason beside it', () => {
     const bad = { ...valid, answers: [{ ...valid.answers[0], unsupported: [{ said: 'We moved it two weeks' }] }] }
     expect(MockDebriefOutSchema.safeParse(bad).success).toBe(false)
+  })
+})
+
+describe('LetterheadFillOutSchema', () => {
+  const valid = {
+    phone: { text: '(503) 555-0161', quote: 'Portland, Oregon — (503) 555-0161' },
+    location: { text: 'Portland, OR', quote: 'Based in Portland, Oregon.' },
+    recipient: null,
+    recipientTitle: null,
+    companyAddress: { text: '1 Marram Way\nBristol, England', quote: '1 Marram Way, Bristol' },
+  }
+
+  it('accepts a fill with quotes behind the values and nulls for the rest', () => {
+    expect(LetterheadFillOutSchema.parse(valid)).toEqual(valid)
+  })
+
+  it('rejects a value with no quote behind it — a fill with no source is a guess', () => {
+    const bad = { ...valid, recipient: { text: 'Dana Wu' } }
+    expect(LetterheadFillOutSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('rejects an empty quote, which every document contains', () => {
+    const bad = { ...valid, recipient: { text: 'Dana Wu', quote: '' } }
+    expect(LetterheadFillOutSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('rejects an omitted field — an unknown must be spelled null', () => {
+    expect(LetterheadFillOutSchema.safeParse(without(valid, 'recipient')).success).toBe(false)
   })
 })

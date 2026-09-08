@@ -3,7 +3,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { blankLetterhead } from '@/lib/letter/letterhead'
 import type { Letterhead } from '@/lib/types'
-import { LetterheadPanel, pendingLetterhead } from '@/components/review/LetterheadPanel'
+import { LetterheadPanel, filledSentence, pendingLetterhead } from '@/components/review/LetterheadPanel'
 
 // The panel shows the header as it will print and then the fields that make it, in that order:
 // the preview is drawn from the same `headerLines` the renderer paginates, so what is on screen
@@ -21,14 +21,16 @@ const letterhead = (over: Partial<Letterhead> = {}): Letterhead => ({
   ...over,
 })
 
-const html = (letter: Letterhead, busy = false) =>
+const html = (letter: Letterhead, busy = false, filling = false) =>
   renderToStaticMarkup(
     createElement(LetterheadPanel, {
       letter,
       company: 'Marram Systems',
       today: '2026-09-07',
       busy,
+      filling,
       onSave: () => Promise.resolve(),
+      onFill: () => Promise.resolve([]),
       onDirtyChange: () => {},
     }),
   )
@@ -113,5 +115,57 @@ describe('LetterheadPanel — what counts as unsaved', () => {
     const typed = pendingLetterhead({ ...stored, recipient: '  Dana Wu Jr.  ' }, stored)
     expect(typed.dirty).toBe(true)
     expect(typed.next.recipient).toBe('Dana Wu Jr.')
+  })
+})
+
+// The fill is the link beside the save, and everything about it turns on one rule: it writes the
+// record, and the record is what re-seeds these fields — so it is held back while anything in
+// them is unsaved, and the line beside it says which. A static render is the whole of what that
+// needs; the request itself is the pane's, handed in as a prop.
+describe('LetterheadPanel — filling in from the profile and the posting', () => {
+  // A stored letterhead that does not survive `readLetterhead` untouched is unsaved the moment it
+  // is drawn, which is how a static render reaches the dirty state at all.
+  const unsaved = () => letterhead({ name: '  Tom Candidate  ' })
+
+  it('offers the fill beside the save, ready to run', () => {
+    const markup = html(letterhead())
+    expect(markup).toContain('Fill in from my profile and the posting')
+    expect(markup).toContain('Saved with the letter. The draft addresses and signs it from here.')
+    expect(markup).not.toContain('Save or clear your edits first.')
+  })
+
+  it('holds it back while the fields are unsaved, and says which', () => {
+    const markup = html(unsaved())
+    expect(markup).toContain(
+      '<button type="button" class="btn-link text-sm" disabled="">Fill in from my profile and the posting</button>',
+    )
+    expect(markup).toContain('Save or clear your edits first.')
+    expect(markup).not.toContain('Saved with the letter.')
+  })
+
+  it('says it is filling, and closes the fields, while one started elsewhere is out', () => {
+    const markup = html(letterhead(), false, true)
+    expect(markup).toContain('Filling in…')
+    expect(markup).toContain('<fieldset disabled=""')
+  })
+
+  it('keeps a line for what it filled before there is anything to say', () => {
+    expect(html(letterhead())).toContain('role="status" aria-live="polite"')
+  })
+})
+
+describe('LetterheadPanel — what the fill says it did', () => {
+  it('names one field', () => {
+    expect(filledSentence(['phone'])).toBe('Filled in phone.')
+  })
+
+  it('names several, and joins the last with "and"', () => {
+    expect(filledSentence(['phone', 'location', 'companyAddress'])).toBe(
+      'Filled in phone, location and company address.',
+    )
+  })
+
+  it('says the other thing when there was nothing to fill', () => {
+    expect(filledSentence([])).toBe('Nothing more to fill in — your facts and the posting don’t say.')
   })
 })

@@ -1,12 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import { statusChange } from '@/components/board/PipelineBoard'
-import { logInterviewPatch, pastApplying, showsProcess } from '@/lib/stage'
+import {
+  afterBoardMove,
+  intakeOpenFromSearch,
+  logInterviewPatch,
+  pastApplying,
+  showsProcess,
+} from '@/lib/stage'
 import type { AppStatus, Application } from '@/lib/types'
 
-// The three decisions the application screen makes about where a record has got to. They live
-// in a module of their own so each of the five statuses can be read here rather than inferred
-// from a rendered page: what the screen draws changes with the stage, and a wrong answer here
-// is a section that appears where it should not or a record dragged backwards.
+// The decisions the application screen makes about where a record has got to, and the one the
+// board makes about where a move leaves the person. They live in a module of their own so each
+// of the five statuses can be read here rather than inferred from a rendered page: what the
+// screen draws changes with the stage, and a wrong answer here is a section that appears where
+// it should not, a record dragged backwards, or a move that lands nowhere.
 
 const ALL: AppStatus[] = ['draft', 'applied', 'interviewing', 'offer', 'rejected']
 
@@ -81,5 +88,41 @@ describe('logInterviewPatch', () => {
   it('stamps the moment it is given', () => {
     const patch = logInterviewPatch(app(), '2026-01-02T03:04:05.678Z')
     expect(patch?.timeline.at(-1)?.at).toBe('2026-01-02T03:04:05.678Z')
+  })
+})
+
+describe('afterBoardMove', () => {
+  it('sends a move to Interviewing to the application, asking for the intake', () => {
+    expect(afterBoardMove('interviewing', 'app-1')).toBe('/applications/app-1?log=1')
+  })
+
+  it('leaves every other move on the board', () => {
+    // Moving a card to Applied, or to an offer or a rejection, is bookkeeping done from the
+    // board and finished there. Only Interviewing has a next step waiting on another screen.
+    expect(ALL.filter((s) => afterBoardMove(s, 'app-1') !== null)).toEqual(['interviewing'])
+  })
+})
+
+describe('intakeOpenFromSearch', () => {
+  it('reads log=1, with or without the leading question mark', () => {
+    expect(intakeOpenFromSearch('log=1')).toBe(true)
+    expect(intakeOpenFromSearch('?log=1')).toBe(true)
+  })
+
+  it('reads it beside other parameters, and ignores anything that is not it', () => {
+    expect(intakeOpenFromSearch('?from=board&log=1')).toBe(true)
+    expect(intakeOpenFromSearch('')).toBe(false)
+    expect(intakeOpenFromSearch('?log=0')).toBe(false)
+    expect(intakeOpenFromSearch('?log')).toBe(false)
+    expect(intakeOpenFromSearch('?logged=1')).toBe(false)
+  })
+
+  it('reads back the very address the board sends, so one move is one journey', () => {
+    // The two halves are written apart — one composes an address, the other reads a query
+    // string off a mounted page — and a flag renamed in either place would otherwise leave
+    // the board navigating somewhere the page opens nothing.
+    const href = afterBoardMove('interviewing', 'app-1')
+    expect(href).not.toBeNull()
+    expect(intakeOpenFromSearch(new URL(href ?? '', 'https://find-a-job.test').search)).toBe(true)
   })
 })

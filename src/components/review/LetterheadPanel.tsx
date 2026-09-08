@@ -18,6 +18,11 @@ import type { Letterhead } from '@/lib/types'
  *
  * Blanks are lines omitted, never lines guessed. A letterhead with nothing but a name prints
  * nothing but a name, and a letter with no name given ends at "Sincerely,".
+ *
+ * The fill beside the save is how most of those blanks get filled: the candidate's own facts and
+ * the posting say five of the seven between them, and retyping a phone number per application was
+ * the cheaper half of a trade that did not have to be paid at all. It writes into blanks only, so
+ * the link is never the thing that loses what somebody typed.
  */
 
 interface Props {
@@ -26,7 +31,14 @@ interface Props {
   /** Today, as the browser's local date — the date the letter would carry if exported now. */
   today: string
   busy: boolean
+  /**
+   * A fill started somewhere else — the page runs one the moment the letter is created, and the
+   * panel is already on screen while it is out. Absent means nobody else is filling.
+   */
+  filling?: boolean
   onSave: (letter: Letterhead) => Promise<void>
+  /** Fill the blanks from the facts and the posting; resolves with the fields it filled. */
+  onFill: () => Promise<string[]>
   onDirtyChange: (dirty: boolean) => void
 }
 
@@ -38,6 +50,28 @@ const FIELDS: { key: keyof Letterhead; label: string; placeholder?: string; auto
   { key: 'recipient', label: 'Recipient', placeholder: 'Their full name, if you know it' },
   { key: 'recipientTitle', label: 'Their title' },
 ]
+
+/**
+ * How the fill's own sentence names each field: the labels above, read mid-sentence. The address
+ * is the one the list does not carry, because it is a textarea rather than an input.
+ */
+const FILL_LABELS: Record<string, string> = {
+  ...Object.fromEntries(FIELDS.map((f) => [f.key, f.label.toLowerCase()])),
+  companyAddress: 'company address',
+}
+
+/**
+ * `Filled in phone, location and company address.` — the fields one call filled, in the order the
+ * route returns them, which is the order they are drawn in. No serial comma: this is a sentence,
+ * not a list. An empty result says the other thing, because there is nothing to name and the two
+ * ways of getting there — nothing was blank, nothing could be sourced — are one outcome to read.
+ */
+export function filledSentence(fields: string[]): string {
+  if (fields.length === 0) return 'Nothing more to fill in — your facts and the posting don’t say.'
+  const named = fields.map((f) => FILL_LABELS[f] ?? f)
+  const last = named[named.length - 1]
+  return `Filled in ${named.length === 1 ? last : `${named.slice(0, -1).join(', ')} and ${last}`}.`
+}
 
 /**
  * What the save would write, and whether that differs from what is stored.
@@ -58,7 +92,16 @@ export function pendingLetterhead(
   return { next, dirty }
 }
 
-export function LetterheadPanel({ letter, company, today, busy, onSave, onDirtyChange }: Props) {
+export function LetterheadPanel({
+  letter,
+  company,
+  today,
+  busy,
+  filling = false,
+  onSave,
+  onFill,
+  onDirtyChange,
+}: Props) {
   const [fields, setFields] = useState(letter)
   // Re-seed when the stored letterhead changes — after a save, or when the question does. The
   // comparison is by value rather than by identity: the pane reads the letterhead back through
@@ -73,6 +116,11 @@ export function LetterheadPanel({ letter, company, today, busy, onSave, onDirtyC
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // A fill this panel started, as against one the page started; the button says the same thing
+  // either way, because from here they are the same request landing in the same fields.
+  const [running, setRunning] = useState(false)
+  const [fillNote, setFillNote] = useState('')
+  const isFilling = filling || running
 
   // Seven typed fields are unsaved work like the box below them, and the page guards them the
   // same way. Reported up rather than held here, because what it disables — every control that
@@ -102,6 +150,27 @@ export function LetterheadPanel({ letter, company, today, busy, onSave, onDirtyC
     }
   }
 
+  /**
+   * Ask for the blanks. The route writes the record and the pane hands the new question down, so
+   * the fields re-seed from what was stored rather than from what came back — the same path a
+   * save takes, and the reason nothing here has to merge anything itself.
+   */
+  async function fill() {
+    setRunning(true)
+    setError('')
+    setFillNote('')
+    try {
+      setFillNote(filledSentence(await onFill()))
+    } catch (err) {
+      setError(
+        readable(err instanceof Error ? err.message : '') ||
+          'That didn’t fill anything in. Your letterhead is still here — try again.',
+      )
+    } finally {
+      setRunning(false)
+    }
+  }
+
   const set = (k: keyof Letterhead, value: string) => setFields((prev) => ({ ...prev, [k]: value }))
 
   return (
@@ -125,7 +194,9 @@ export function LetterheadPanel({ letter, company, today, busy, onSave, onDirtyC
         above it.
       </p>
 
-      <fieldset disabled={busy || saving} className="mt-4 min-w-0">
+      {/* Closed while a fill is out as well as while a save is: what comes back re-seeds every
+          field, so anything typed into one in the meantime would go without being asked about. */}
+      <fieldset disabled={busy || saving || isFilling} className="mt-4 min-w-0">
         <legend className="sr-only">Letterhead</legend>
         <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
           {FIELDS.map(({ key: k, label, placeholder, autoComplete }) => (
@@ -161,11 +232,29 @@ export function LetterheadPanel({ letter, company, today, busy, onSave, onDirtyC
           <button type="button" className="btn btn-quiet" onClick={() => void save()}>
             {saving ? 'Saving…' : 'Save letterhead'}
           </button>
+          {/* Held back while the fields are unsaved, and the line beside says which: the fill
+              writes the record, and the record is what re-seeds these inputs, so running one over
+              typing that has not been saved would take the typing with it. */}
+          <button
+            type="button"
+            className="btn-link text-sm"
+            disabled={busy || saving || isFilling || dirty}
+            onClick={() => void fill()}
+          >
+            {isFilling ? 'Filling in…' : 'Fill in from my profile and the posting'}
+          </button>
           <p className="max-w-[52ch] text-sm text-ink-3">
-            Saved with the letter. The draft addresses and signs it from here.
+            {dirty
+              ? 'Save or clear your edits first.'
+              : 'Saved with the letter. The draft addresses and signs it from here.'}
           </p>
         </div>
       </fieldset>
+      {/* In the DOM before it has anything to say, so a screen reader announces the sentence when
+          it arrives rather than missing an element that appeared already carrying one. */}
+      <p role="status" aria-live="polite" className="mt-2 max-w-[62ch] text-sm text-ink-3 empty:mt-0">
+        {fillNote}
+      </p>
       {error && (
         <p role="alert" className="mt-2 max-w-[62ch] text-sm text-danger">
           {error}

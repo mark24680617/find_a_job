@@ -5,6 +5,15 @@ import { renderToStaticMarkup } from 'react-dom/server'
 // The import chain reaches `@/lib/firebase/client`, which builds a real Auth instance at
 // module scope and throws outside a browser. Nothing under test touches it.
 vi.mock('@/lib/firebase/client', () => ({ auth: {} }))
+// These hooks read the app router off a context a static render does not have, so the mock
+// stands in for the whole module the board's tree reaches: the board's own `useRouter`, whose
+// one use is the navigation after a move to Interviewing that no render here makes — where that
+// move goes is decided by `afterBoardMove`, and read in `tests/stage.test.ts` — and the shell's
+// `usePathname`, which is on the import chain whether or not a test draws the shell.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: () => {} }),
+  usePathname: () => '/',
+}))
 
 import { Dashboard } from '@/components/board/DashboardScreen'
 import {

@@ -55,6 +55,12 @@ interface Props {
    * longer in your profile", so the draft waits for this before it goes on screen.
    */
   onFactsChanged: () => void | Promise<void>
+  /**
+   * A letterhead fill the PAGE started — it runs one the moment a letter is created, and this
+   * pane is already on screen while it is out. Held exactly as a fill asked for from the panel
+   * is: the record is about to change either way, and a draft started meanwhile reads the old one.
+   */
+  letterFilling?: boolean
   /** Tell the page whether this question holds unsaved work — the answer box or the story. */
   onDirtyChange: (dirty: boolean) => void
   /** Drop this question from the form. Resolves once it is gone, rejects with a message. */
@@ -120,10 +126,16 @@ const DRAFT_NOTE = 'Usually takes 10–20 seconds.'
 const LETTER_DRAFT_NOTE = 'Usually takes 5–10 seconds.'
 
 // Said in two places, because there are two places a draft can be asked for while the letterhead
-// is unsaved: under the panel, where the buttons that start one are, and beside the ask queue's
+// is in hand: under the panel, where the buttons that start one are, and beside the ask queue's
 // re-draft, which is the route a letter takes most often — its first draft is meant to leave asks
 // open, so answering them is where the person usually comes back from.
+//
+// Two sentences, because the two holds are different things happening. Unsaved fields are the
+// person's to resolve; a fill is the product's own request, and there is nothing to do about it
+// but wait the second or two out.
 const LETTERHEAD_HOLD = 'Save the letterhead first — the draft addresses and signs the letter from it.'
+const LETTERHEAD_FILL_HOLD =
+  'Filling in the letterhead — the draft addresses and signs the letter from what it lands on.'
 
 const CLARIFY_STAGES = [
   { at: 0, text: 'Reading the role…' },
@@ -138,6 +150,7 @@ export function ReviewPane({
   onQuestionChange,
   onAppChange,
   onFactsChanged,
+  letterFilling = false,
   onDirtyChange,
   onDelete,
 }: Props) {
@@ -178,9 +191,13 @@ export function ReviewPane({
   // The letterhead's seven fields, edited above the draft. `letterDirty` is unsaved work like
   // the box below, and it holds back every control that would start a draft: the draft reads
   // the letterhead off the record, so drafting from unsaved fields would address the letter to
-  // whoever was there before. The export and its two lines are kept apart from the save and the
-  // copy for the same reason those two are kept apart from each other.
+  // whoever was there before. A fill in flight holds them back for the same reason from the other
+  // side — it PATCHes the record a second or two from now, so a draft started in that window is
+  // pinned to the letterhead as it was and disagrees with the one that lands. The export and its
+  // two lines are kept apart from the save and the copy for the same reason those two are kept
+  // apart from each other.
   const [letterDirty, setLetterDirty] = useState(false)
+  const [filling, setFilling] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
   const [exportNote, setExportNote] = useState('')
@@ -215,6 +232,13 @@ export function ReviewPane({
   // separate from `dirty` because the two are lost to different things: the answer box is
   // what a new draft overwrites, and the story is what a new draft SAVES.
   const storyDirty = story !== (question.story ?? '')
+  // Whether a draft may be started at all, and what to say when it may not. Both fills count —
+  // this pane's own and the one the page runs the moment a letter is created — because from the
+  // draft's side they are the same request landing in the same record. Not folded into the unsaved
+  // work above: a fill is nothing the person could lose by leaving, so it is not what that guard
+  // is about.
+  const letterHeld = letterDirty || filling || letterFilling
+  const heldReason = letterDirty ? LETTERHEAD_HOLD : LETTERHEAD_FILL_HOLD
   useEffect(() => {
     onDirtyChange(dirty || storyDirty || letterDirty)
     return () => onDirtyChange(false)
@@ -375,6 +399,35 @@ export function ReviewPane({
     // them, and the same reason a name the font could not set is no longer the problem it was.
     setExportNote('')
     setExportError('')
+  }
+
+  /**
+   * Fill the letterhead's blanks from the candidate's facts and the posting, and answer with the
+   * fields that came back so the panel can name them.
+   *
+   * Nothing is merged here. The route writes the record and answers with the question as it now
+   * stands, so the pane's copy moves to that and the panel re-seeds from it — the same path the
+   * save takes, and the reason a fill and a save cannot leave the two disagreeing.
+   *
+   * Flagged here as well as in the panel, because it is the pane that holds the draft back while
+   * it is out. The panel raises and clears its own for the button's label; this one is what every
+   * control that starts a draft waits on, and it has to be set whichever side asked.
+   */
+  async function fillLetterhead(): Promise<string[]> {
+    setFilling(true)
+    try {
+      const res = await apiFetch<{ question: Question; filled: string[] }>(
+        `/api/applications/${app.id}/cover-letter/letterhead`,
+        { method: 'POST' },
+      )
+      onQuestionChange(index, res.question)
+      // A filled letterhead is a new header and a new file name, as a saved one is.
+      setExportNote('')
+      setExportError('')
+      return res.filled
+    } finally {
+      setFilling(false)
+    }
   }
 
   /**
@@ -579,10 +632,12 @@ export function ReviewPane({
             company={app.company}
             today={todayIso()}
             busy={drafting || clarifying || saving}
+            filling={filling || letterFilling}
             onSave={saveLetterhead}
+            onFill={fillLetterhead}
             onDirtyChange={setLetterDirty}
           />
-          {letterDirty && <p className="mt-2 text-sm text-ink-3">{LETTERHEAD_HOLD}</p>}
+          {letterHeld && <p className="mt-2 text-sm text-ink-3">{heldReason}</p>}
         </>
       )}
 
@@ -618,7 +673,7 @@ export function ReviewPane({
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={drafting || clarifying || letterDirty}
+                  disabled={drafting || clarifying || letterHeld}
                   onClick={() => void draftWithSelections()}
                 >
                   {drafting ? 'Drafting…' : 'Draft with these'}
@@ -637,7 +692,7 @@ export function ReviewPane({
                 <button
                   type="button"
                   className="btn-link text-sm"
-                  disabled={drafting || clarifying || letterDirty}
+                  disabled={drafting || clarifying || letterHeld}
                   onClick={reclarify}
                 >
                   Ask different questions
@@ -671,7 +726,7 @@ export function ReviewPane({
                 <button
                   type="button"
                   className="btn btn-quiet"
-                  disabled={drafting || clarifying || letterDirty}
+                  disabled={drafting || clarifying || letterHeld}
                   onClick={() => void draft([])}
                 >
                   {drafting ? 'Drafting…' : 'Re-draft'}
@@ -703,7 +758,7 @@ export function ReviewPane({
                   <button
                     type="button"
                     className="btn-link text-sm"
-                    disabled={drafting || clarifying || letterDirty}
+                    disabled={drafting || clarifying || letterHeld}
                     onClick={() => void clarify()}
                   >
                     {clarifying ? 'Reading the role…' : 'Set up this answer'}
@@ -726,7 +781,7 @@ export function ReviewPane({
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={drafting || letterDirty}
+                    disabled={drafting || letterHeld}
                     onClick={adjustSetup}
                   >
                     Resume setup
@@ -735,7 +790,7 @@ export function ReviewPane({
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={drafting || letterDirty}
+                    disabled={drafting || letterHeld}
                     onClick={() => void clarify()}
                   >
                     Set up this answer
@@ -744,7 +799,7 @@ export function ReviewPane({
                 <button
                   type="button"
                   className="btn btn-quiet"
-                  disabled={drafting || letterDirty}
+                  disabled={drafting || letterHeld}
                   onClick={() => void draft([])}
                 >
                   {drafting ? 'Drafting…' : 'Draft without setup'}
@@ -810,7 +865,7 @@ export function ReviewPane({
                       <button
                         type="button"
                         className="btn btn-primary"
-                        disabled={drafting || clarifying || letterDirty || story.trim() === ''}
+                        disabled={drafting || clarifying || letterHeld || story.trim() === ''}
                         onClick={() => void draft([])}
                       >
                         Re-draft with this
@@ -938,7 +993,7 @@ export function ReviewPane({
           // Answering the asks re-drafts, so the unsaved letterhead holds it back like every
           // other control that would start one — otherwise the draft a letter is likeliest to
           // ask for is the one drafted from whoever was in the recipient field before.
-          held={letterDirty ? LETTERHEAD_HOLD : undefined}
+          held={letterHeld ? heldReason : undefined}
           onSubmit={(answers) => void draft(answers)}
         />
       )}

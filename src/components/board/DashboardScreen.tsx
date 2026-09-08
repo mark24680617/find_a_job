@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { AppShell } from '@/components/AppShell'
 import { PipelineBoard, statusChange } from '@/components/board/PipelineBoard'
@@ -8,6 +9,7 @@ import { UpcomingStrip, upcomingRounds, type UpcomingRound } from '@/components/
 import { Landing } from '@/components/landing/Landing'
 import { apiFetch } from '@/lib/apiFetch'
 import { readable } from '@/lib/readable'
+import { afterBoardMove } from '@/lib/stage'
 import type { Application, AppStatus, InterviewRound } from '@/lib/types'
 
 /**
@@ -47,6 +49,7 @@ async function fetchUpcoming(list: Application[]): Promise<UpcomingRound[]> {
 }
 
 export function Dashboard() {
+  const router = useRouter()
   const [apps, setApps] = useState<Application[] | null>(null)
   const [upcoming, setUpcoming] = useState<UpcomingRound[]>([])
   const [loadError, setLoadError] = useState('')
@@ -105,6 +108,11 @@ export function Dashboard() {
       body: JSON.stringify(statusChange(app, next)),
     })
     setApps((prev) => prev?.map((a) => (a.id === updated.id ? updated : a)) ?? prev)
+    // A move to Interviewing has a next step waiting on another screen — the notice to paste —
+    // so it goes there rather than leaving the person to find the record again. The board is
+    // updated first, so a navigation that is slow leaves the card in its new column meanwhile.
+    const href = afterBoardMove(next, app.id)
+    if (href) router.push(href)
   }
 
   /**

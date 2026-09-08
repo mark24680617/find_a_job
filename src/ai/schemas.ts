@@ -419,3 +419,26 @@ export const TakeHomeSynthesizeOutSchema = z.object({
   caveats: z.array(z.string()),
 })
 export type TakeHomeSynthesizeOut = z.infer<typeof TakeHomeSynthesizeOutSchema>
+
+/**
+ * letterheadFill: the candidate's facts and the posting in, the five letterhead fields the two
+ * documents can supply out. Nullable rather than optional on every one, for the reason
+ * `ProcessSynthesizeOut` gives and one of this flow's own: an unknown here is the answer, not an
+ * omission, and a field the model simply forgot to write would otherwise be indistinguishable
+ * from one it looked for and did not find.
+ *
+ * `text` and `quote` are both non-empty, because a value with neither is nothing and a value with
+ * no quote is a guess. Whether the quote is really in the document it claims is not a shape and
+ * cannot be checked here — `runLetterheadFill` checks it against the corpus the field was named
+ * for, and drops the value when it is not there.
+ */
+const FillSchema = z.object({ text: z.string().min(1), quote: z.string().min(1) }).nullable()
+
+export const LetterheadFillOutSchema = z.object({
+  phone: FillSchema,
+  location: FillSchema,
+  recipient: FillSchema,
+  recipientTitle: FillSchema,
+  companyAddress: FillSchema,
+})
+export type LetterheadFillOut = z.infer<typeof LetterheadFillOutSchema>
