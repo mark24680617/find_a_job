@@ -2,6 +2,7 @@ import { runFormParse } from '@/ai/flows/formParse'
 import { IMAGE_MIMES, type FormImage } from '@/ai/prompts/formParse'
 import { requireUser } from '@/lib/auth'
 import { getApplication, updateApplication } from '@/lib/db'
+import { isCoverLetter } from '@/lib/letter/letterhead'
 import type { Application, Question } from '@/lib/types'
 
 // Read one application form — pasted text, screenshots of the live form, or both — and put
@@ -89,8 +90,13 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   // Composed from that fresh read in both modes, so an append carries the existing questions
   // through by reference — drafts, finals, stories and positioning intact — including one that
   // landed while the model was reading.
+  //
+  // A replace takes the cover letter with it, after the form's own questions, where the page
+  // appended it. A replace says "the newest intake is the description of the form", and a cover
+  // letter is not on the form: nothing this parse read describes it, so nothing this parse read
+  // has any claim to throw it away.
   const patch: Partial<Application> = {
-    questions: append ? [...app.questions, ...read] : read,
+    questions: append ? [...app.questions, ...read] : [...read, ...app.questions.filter(isCoverLetter)],
   }
   // The posting could not tell whether this material attaches to one requisition or to a
   // platform profile; the form itself often can. Only that one field is overwritten, and

@@ -3,6 +3,7 @@ import type { Application, Profile, Question, VoiceRule } from '@/lib/types'
 import type { FeedbackDistillOut } from '@/ai/schemas'
 import { FlowOutputError } from '@/ai/genkit'
 import type { FeedbackDistillInput } from '@/ai/prompts/feedbackDistill'
+import { newCoverLetter } from '@/lib/letter/letterhead'
 
 // The handler with everything behind it faked: no Admin SDK, no model call. What is under
 // test is the finalize contract — the save lands FIRST and unconditionally, learning runs
@@ -210,6 +211,27 @@ describe('POST .../questions/[idx]/finalize — learning from the edit', () => {
     await expect(res.json()).resolves.toMatchObject({ newRules: [] })
     expect(runFeedbackDistill).not.toHaveBeenCalled()
     expect(setProfile).not.toHaveBeenCalled()
+  })
+
+  it('never learns from a cover letter, however much the human rewrote it', async () => {
+    // A letter's edits are a letter's: polishing one would teach salutation and cadence rules
+    // that then govern hundred-word form answers, and push out rules learned from real ones.
+    const letter: Question = {
+      ...newCoverLetter('Tom Candidate', 'tom@x.test'),
+      draft: { text: 'Dear Hiring Manager,\n\nI am excited to apply.\n\nSincerely,\nTom Candidate', citations: [] },
+      status: 'drafted',
+    }
+    getApplication.mockResolvedValue(application({ questions: [letter, other()] }))
+
+    const res = await POST(post({ final: 'Dear Hiring Manager,\n\nI built a ledger.\n\nSincerely,\nTom Candidate' }), ctx('app-1', '0'))
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toMatchObject({ newRules: [] })
+    expect(runFeedbackDistill).not.toHaveBeenCalled()
+    expect(getProfile).not.toHaveBeenCalled()
+    expect(setProfile).not.toHaveBeenCalled()
+    // The save itself is untouched: it is the human's work, and it lands as any other does.
+    expect(written().final).toBe('Dear Hiring Manager,\n\nI built a ledger.\n\nSincerely,\nTom Candidate')
+    expect(written().status).toBe('final')
   })
 
   it('learns nothing, and touches nothing, when the edit shows no pattern', async () => {

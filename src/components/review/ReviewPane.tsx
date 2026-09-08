@@ -1,11 +1,21 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, apiFetch } from '@/lib/apiFetch'
+import { ApiError, apiDownload, apiFetch } from '@/lib/apiFetch'
 import { countUnits } from '@/lib/countText'
+import { formatLetterDate } from '@/lib/letter/layout'
+import {
+  isCoverLetter,
+  letterFileName,
+  readLetterhead,
+  todayIso,
+  LETTER_WORD_CEILING,
+  LETTER_WORD_TARGET,
+} from '@/lib/letter/letterhead'
 import { readable } from '@/lib/readable'
-import type { Application, Citation, ClarifyAnswer, Fact, Question } from '@/lib/types'
+import type { Application, Citation, ClarifyAnswer, Fact, Letterhead, Question } from '@/lib/types'
 import { AskHumanQueue } from '@/components/review/AskHumanQueue'
+import { LetterheadPanel } from '@/components/review/LetterheadPanel'
 import {
   ClarifyCards,
   seedCard,
@@ -60,6 +70,24 @@ function statedLimit(q: Question): { limit: number; unit: 'words' | 'chars' } | 
 const message = (err: unknown): string => (err instanceof Error ? err.message : '')
 
 /**
+ * The per-character detail the PDF route sends with a 422 it could not set: the characters it
+ * named, where each sits, and how many it found in all — the route names a handful at most, so
+ * the total is what says whether the list is the whole story. Read defensively; everything else
+ * about that failure is a sentence, and a body without this list is simply shown as one.
+ */
+function unsupportedCharacters(body: unknown): {
+  chars: { char: string; where: string }[]
+  total: number
+} {
+  if (typeof body !== 'object' || body === null || !('unsupported' in body)) {
+    return { chars: [], total: 0 }
+  }
+  const { unsupported, total } = body as { unsupported: unknown; total?: unknown }
+  const chars = Array.isArray(unsupported) ? (unsupported as { char: string; where: string }[]) : []
+  return { chars, total: typeof total === 'number' ? total : chars.length }
+}
+
+/**
  * What the draft endpoint answers with: the question it wrote, and what the story it was
  * given did to the profile. `storyLearned` is false when nothing was told, when the same
  * telling was posted back unchanged, and when the extraction itself failed — so the note
@@ -77,7 +105,25 @@ const DRAFT_STAGES = [
   { at: 0, text: 'Writing the answer…' },
   { at: 5000, text: 'Checking every claim against your facts…' },
 ]
+// Unmeasured, and knowingly left standing: the cover-letter smoke of 2026-09-07 compared the two
+// notes and re-measured only the letter's. The whole `answerDraft` smoke — process start, one
+// draft, printing — finished in 2.2 seconds of wall clock that same afternoon, so this range reads
+// as stale as the letter's did. Re-measuring it is a change to the wait every question in the
+// product promises, and that wants runs of its own rather than a letter's three.
 const DRAFT_NOTE = 'Usually takes 10–20 seconds.'
+// A letter is three times the length of a form answer and thinks with three times the budget,
+// but it is still one call, and the smoke of 2026-09-07 measured it: the three runs kept beside
+// that smoke's README drafted in 2.2, 2.1 and 1.9 seconds of model time, none of them corrected,
+// and the slowest draft of the forty-six runs behind that README was 2.8 seconds. The range is
+// that ceiling with room for the route's own reads and for the correction round, which spends a
+// second call.
+const LETTER_DRAFT_NOTE = 'Usually takes 5–10 seconds.'
+
+// Said in two places, because there are two places a draft can be asked for while the letterhead
+// is unsaved: under the panel, where the buttons that start one are, and beside the ask queue's
+// re-draft, which is the route a letter takes most often — its first draft is meant to leave asks
+// open, so answering them is where the person usually comes back from.
+const LETTERHEAD_HOLD = 'Save the letterhead first — the draft addresses and signs the letter from it.'
 
 const CLARIFY_STAGES = [
   { at: 0, text: 'Reading the role…' },
@@ -96,6 +142,10 @@ export function ReviewPane({
   onDelete,
 }: Props) {
   const question = app.questions[index]
+  // A cover letter is a question of its own kind, and the whole of what changes here is a dozen
+  // strings, the letterhead above the draft and the export beside Copy. Read once, so the pane
+  // asks what this is in one place rather than a dozen.
+  const letter = isCoverLetter(question)
   // What a save compares against: the saved final if there is one, else the draft it was seeded
   // from. When the box matches this, there is nothing unsaved to lose.
   const baseline = question.final ?? question.draft?.text ?? ''
@@ -124,6 +174,16 @@ export function ReviewPane({
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState('')
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // The letterhead's seven fields, edited above the draft. `letterDirty` is unsaved work like
+  // the box below, and it holds back every control that would start a draft: the draft reads
+  // the letterhead off the record, so drafting from unsaved fields would address the letter to
+  // whoever was there before. The export and its two lines are kept apart from the save and the
+  // copy for the same reason those two are kept apart from each other.
+  const [letterDirty, setLetterDirty] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const [exportNote, setExportNote] = useState('')
 
   // The positioning round. `question.clarify` is the persisted set of questions the agent is
   // asking this time; `selections` is the human's unsaved answer to it, seeded from each
@@ -156,9 +216,9 @@ export function ReviewPane({
   // what a new draft overwrites, and the story is what a new draft SAVES.
   const storyDirty = story !== (question.story ?? '')
   useEffect(() => {
-    onDirtyChange(dirty || storyDirty)
+    onDirtyChange(dirty || storyDirty || letterDirty)
     return () => onDirtyChange(false)
-  }, [dirty, storyDirty, onDirtyChange])
+  }, [dirty, storyDirty, letterDirty, onDirtyChange])
 
   // Bring the fact into view when a citation is selected — on a narrow screen the source panel
   // sits below the answer, out of sight until scrolled to.
@@ -296,13 +356,79 @@ export function ReviewPane({
   }
 
   /**
+   * Store the letterhead on this question. The whole array goes, as the page's own delete does,
+   * so every other answer survives the write; the pane's copy of the question then moves to
+   * match, which is what re-seeds the panel from what was stored rather than what was typed.
+   * A failure is thrown on to the panel, which is where the fields the person would retype are.
+   */
+  async function saveLetterhead(next: Letterhead) {
+    await apiFetch(`/api/applications/${app.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        questions: app.questions.map((q, i) => (i === index ? { ...q, letter: next } : q)),
+      }),
+    })
+    onQuestionChange(index, { ...question, letter: next })
+    // A new letterhead is a new header and a new file name, so the export's lines are about a
+    // file that is no longer what would come back — the same reason an edit to the letter clears
+    // them, and the same reason a name the font could not set is no longer the problem it was.
+    setExportNote('')
+    setExportError('')
+  }
+
+  /**
+   * The saved letter on a US-Letter page. The SAVED one: the route reads the record, not this
+   * box, which is why the button waits for the save — what you export is what you signed.
+   *
+   * The date goes with the request because only this browser knows what day it is where the
+   * person is sitting. A 422 that names characters the font cannot set becomes one sentence per
+   * character, since "use a Latin spelling" is unactionable until you know which one.
+   */
+  async function exportPdf() {
+    setExporting(true)
+    setExportError('')
+    setExportNote('')
+    const date = todayIso()
+    // The pretty name is computed here rather than sent back in a header: a filename outside
+    // Latin-1 throws in Node, and the person most likely to have one is the person this export
+    // must not fail for.
+    const file = letterFileName(readLetterhead(question.letter).name, app.company)
+    try {
+      await apiDownload(`/api/applications/${app.id}/cover-letter/pdf?date=${date}`, file)
+      setExportNote(`Downloaded ${file} — dated ${formatLetterDate(date)}.`)
+    } catch (err) {
+      const cannotSet =
+        err instanceof ApiError ? unsupportedCharacters(err.body) : { chars: [], total: 0 }
+      const named = cannotSet.chars.map(
+        (u) =>
+          `The PDF font can’t set “${u.char}” (${u.where}) — use a Latin spelling, or copy the letter as text.`,
+      )
+      // The route names a handful of characters and counts them all. When it found more than it
+      // named — a letter written in a script the font has none of — its own sentence goes first,
+      // because how many there are is the thing that decides what to do about them; when the
+      // list is the whole of it that sentence says nothing these do not.
+      setExportError(
+        named.length > 0
+          ? (cannotSet.total > named.length ? [readable(message(err)), ...named] : named).join(' ')
+          : readable(message(err)) || 'The PDF could not be made. Try again.',
+      )
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  /**
    * Drop the question from the form. Nothing here is recoverable — the draft, the story and
    * whatever is in the answer box all go — so the confirm names them instead of asking a
    * generic "are you sure". That one sentence covers the unsaved answer too, which is why
    * there is no second prompt on top of it.
    */
   async function remove() {
-    if (!window.confirm('Delete this question? Its draft and your answer go with it.')) return
+    const asked = letter
+      ? 'Delete this cover letter? The draft, your letter and the letterhead go with it.'
+      : 'Delete this question? Its draft and your answer go with it.'
+    if (!window.confirm(asked)) return
     setDeleting(true)
     setDeleteError('')
     try {
@@ -392,7 +518,9 @@ export function ReviewPane({
   const stated = statedLimit(question)
   const unit = stated?.unit ?? question.constraints.unit ?? 'words'
   const count = countUnits(finalText, unit)
-  const over = stated ? count > stated.limit : false
+  // A letter states no limit, because no employer stated one. What it has instead is the
+  // one-page convention, held as the same ceiling the flow refuses a draft over.
+  const over = letter ? count > LETTER_WORD_CEILING : stated ? count > stated.limit : false
   const openAsks = question.askHuman.length > 0
   const activeFact = active ? factsById.get(active.factId) : undefined
 
@@ -400,12 +528,21 @@ export function ReviewPane({
     <section aria-labelledby="answer-heading" className="min-w-0">
       <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-ink-3">Question</p>
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-ink-3">
+            {letter ? 'Cover letter' : 'Question'}
+          </p>
+          {/* A letter's heading is not its question — "Cover letter" is what the list says, and
+              repeating it here would leave the one thing worth naming, the role it is for, off
+              the screen entirely. */}
           <h2 id="answer-heading" className="mt-1.5 max-w-[62ch] font-display text-[1.375rem] leading-snug tracking-tight text-ink">
-            {question.q}
+            {letter ? `For the ${app.role} role at ${app.company}` : question.q}
           </h2>
           <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-3">
-            {stated ? (
+            {letter ? (
+              <span>
+                One page — {LETTER_WORD_TARGET.min} to {LETTER_WORD_TARGET.max} words
+              </span>
+            ) : stated ? (
               <span className="tnum">
                 Limit {stated.limit} {stated.unit}
               </span>
@@ -424,13 +561,29 @@ export function ReviewPane({
           disabled={deleting}
           onClick={() => void remove()}
         >
-          {deleting ? 'Deleting…' : 'Delete question'}
+          {deleting ? 'Deleting…' : letter ? 'Delete cover letter' : 'Delete question'}
         </button>
       </header>
       {deleteError && (
         <p role="alert" className="mt-2 max-w-[62ch] text-sm text-danger">
           {deleteError}
         </p>
+      )}
+
+      {/* Above the draft, because it is above the letter on the page: the person sees the
+          recipient block sitting over their own "Dear …," before the model writes one. */}
+      {letter && (
+        <>
+          <LetterheadPanel
+            letter={readLetterhead(question.letter)}
+            company={app.company}
+            today={todayIso()}
+            busy={drafting || clarifying || saving}
+            onSave={saveLetterhead}
+            onDirtyChange={setLetterDirty}
+          />
+          {letterDirty && <p className="mt-2 text-sm text-ink-3">{LETTERHEAD_HOLD}</p>}
+        </>
       )}
 
       {/* Draft on the left, the fact behind a selected phrase on the right where there's room;
@@ -465,7 +618,7 @@ export function ReviewPane({
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={drafting || clarifying}
+                  disabled={drafting || clarifying || letterDirty}
                   onClick={() => void draftWithSelections()}
                 >
                   {drafting ? 'Drafting…' : 'Draft with these'}
@@ -478,10 +631,13 @@ export function ReviewPane({
                 >
                   Cancel
                 </button>
+                {/* Held by an unsaved letterhead like every other control that can start a
+                    draft: a fresh round that comes back with nothing to ask drafts straight
+                    away, and that draft reads the letterhead off the record. */}
                 <button
                   type="button"
                   className="btn-link text-sm"
-                  disabled={drafting || clarifying}
+                  disabled={drafting || clarifying || letterDirty}
                   onClick={reclarify}
                 >
                   Ask different questions
@@ -515,7 +671,7 @@ export function ReviewPane({
                 <button
                   type="button"
                   className="btn btn-quiet"
-                  disabled={drafting || clarifying}
+                  disabled={drafting || clarifying || letterDirty}
                   onClick={() => void draft([])}
                 >
                   {drafting ? 'Drafting…' : 'Re-draft'}
@@ -547,7 +703,7 @@ export function ReviewPane({
                   <button
                     type="button"
                     className="btn-link text-sm"
-                    disabled={drafting || clarifying}
+                    disabled={drafting || clarifying || letterDirty}
                     onClick={() => void clarify()}
                   >
                     {clarifying ? 'Reading the role…' : 'Set up this answer'}
@@ -558,9 +714,9 @@ export function ReviewPane({
           ) : (
             <div className="border border-dashed border-line px-5 py-8">
               <p className="max-w-[56ch] text-[0.9375rem] leading-relaxed text-ink-2">
-                No draft yet. Setting up reads what the role screens for and asks the positioning
-                calls only you can make — then the draft leads with your angle, every claim cited
-                to a fact. Or draft straight from your profile.
+                {letter
+                  ? 'No draft yet. Setting up asks which experience should lead and whether to name a gap — then the letter is drafted, every claim cited to a fact, and it asks you for what only you can say: why this company, and the story behind your lead example. Or draft straight from your profile.'
+                  : 'No draft yet. Setting up reads what the role screens for and asks the positioning calls only you can make — then the draft leads with your angle, every claim cited to a fact. Or draft straight from your profile.'}
               </p>
               {/* While the role is being read the choices are gone but the explanation stays:
                   what replaces them is the progress below, not an empty box. */}
@@ -570,7 +726,7 @@ export function ReviewPane({
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={drafting}
+                    disabled={drafting || letterDirty}
                     onClick={adjustSetup}
                   >
                     Resume setup
@@ -579,7 +735,7 @@ export function ReviewPane({
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={drafting}
+                    disabled={drafting || letterDirty}
                     onClick={() => void clarify()}
                   >
                     Set up this answer
@@ -588,7 +744,7 @@ export function ReviewPane({
                 <button
                   type="button"
                   className="btn btn-quiet"
-                  disabled={drafting}
+                  disabled={drafting || letterDirty}
                   onClick={() => void draft([])}
                 >
                   {drafting ? 'Drafting…' : 'Draft without setup'}
@@ -613,7 +769,13 @@ export function ReviewPane({
                     htmlFor="story"
                     className="max-w-[58ch] text-[0.9375rem] font-medium leading-snug text-ink"
                   >
-                    {adjusting ? 'Adjust this answer' : 'The story behind this answer'}
+                    {adjusting
+                      ? letter
+                        ? 'Adjust this letter'
+                        : 'Adjust this answer'
+                      : letter
+                        ? 'The story behind this letter'
+                        : 'The story behind this answer'}
                   </label>
                   {/* No fill here — the box is already amber-soft, so a filled chip on it is
                       a chip nobody can see. And nothing to mark once there is a draft: fixing
@@ -648,7 +810,7 @@ export function ReviewPane({
                       <button
                         type="button"
                         className="btn btn-primary"
-                        disabled={drafting || clarifying || story.trim() === ''}
+                        disabled={drafting || clarifying || letterDirty || story.trim() === ''}
                         onClick={() => void draft([])}
                       >
                         Re-draft with this
@@ -691,7 +853,9 @@ export function ReviewPane({
                   disabled={drafting || clarifying}
                   onClick={() => setStoryOpen(true)}
                 >
-                  Tell the story behind this answer
+                  {/* The same words the box's own label uses, so the control does not call it a
+                      letter once it is open and an answer while it is shut. */}
+                  {letter ? 'Tell the story behind this letter' : 'Tell the story behind this answer'}
                 </button>
                 <span className="bg-amber-soft px-2 py-0.5 text-xs font-medium tracking-wide text-amber">
                   Optional
@@ -715,7 +879,7 @@ export function ReviewPane({
             busy={drafting || clarifying}
             className="mt-4 empty:mt-0"
             stages={clarifying ? CLARIFY_STAGES : DRAFT_STAGES}
-            note={clarifying ? CLARIFY_NOTE : DRAFT_NOTE}
+            note={clarifying ? CLARIFY_NOTE : letter ? LETTER_DRAFT_NOTE : DRAFT_NOTE}
           />
 
           {clarifyNote && (
@@ -771,6 +935,10 @@ export function ReviewPane({
           key={question.draft?.text ?? 'no-draft'}
           asks={question.askHuman}
           busy={drafting || clarifying}
+          // Answering the asks re-drafts, so the unsaved letterhead holds it back like every
+          // other control that would start one — otherwise the draft a letter is likeliest to
+          // ask for is the one drafted from whoever was in the recipient field before.
+          held={letterDirty ? LETTERHEAD_HOLD : undefined}
           onSubmit={(answers) => void draft(answers)}
         />
       )}
@@ -779,11 +947,12 @@ export function ReviewPane({
         <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
           <div>
             <h3 id="final-heading" className="font-display text-lg tracking-tight text-ink">
-              Your answer
+              {letter ? 'Your letter' : 'Your answer'}
             </h3>
             <p className="mt-1 max-w-[58ch] text-sm leading-relaxed text-ink-2">
-              This is what you’ll paste into the form. Edit it freely — nothing here is sent
-              anywhere until you save it.
+              {letter
+                ? 'This is the letter itself, from the salutation to your name. Edit it freely — nothing here is sent anywhere until you save it. The letterhead above goes on the PDF.'
+                : 'This is what you’ll paste into the form. Edit it freely — nothing here is sent anywhere until you save it.'}
             </p>
           </div>
           {/* Not a live region: a count that speaks on every keystroke buries the page under
@@ -795,7 +964,7 @@ export function ReviewPane({
         </div>
 
         <label htmlFor="final-answer" className="sr-only">
-          Your answer
+          {letter ? 'Your letter' : 'Your answer'}
         </label>
         <textarea
           id="final-answer"
@@ -809,6 +978,11 @@ export function ReviewPane({
             // it stands it hides the line under it — including the over-limit warning, which is
             // now the only place crossing the limit is said out loud.
             if (saveNote) setSaveNote('')
+            // The export's own two lines describe a file, and the file stops being what is on
+            // screen at that same keystroke: "Downloaded …" would otherwise stand under a
+            // Download PDF the edit has just disabled, naming a letter nobody has any more.
+            if (exportNote) setExportNote('')
+            if (exportError) setExportError('')
           }}
         />
 
@@ -819,7 +993,7 @@ export function ReviewPane({
             disabled={saving || finalText.trim() === ''}
             onClick={() => void saveFinal()}
           >
-            {saving ? 'Saving…' : 'Save final'}
+            {saving ? 'Saving…' : letter ? 'Save letter' : 'Save final'}
           </button>
           <button
             type="button"
@@ -829,6 +1003,21 @@ export function ReviewPane({
           >
             {copied ? 'Copied' : 'Copy'}
           </button>
+          {/* The export is the saved letter and the saved letterhead, so it waits for both to be
+              saved — an unsaved edit is simply not what would come back. */}
+          {letter && (
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={exporting || question.final === undefined || dirty || letterDirty}
+              onClick={() => void exportPdf()}
+            >
+              {exporting ? 'Preparing…' : 'Download PDF'}
+            </button>
+          )}
+          {letter && (question.final === undefined || dirty || letterDirty) && (
+            <p className="text-sm text-ink-3">Save the letter to export it.</p>
+          )}
           {copyError && (
             <p role="alert" className="max-w-[52ch] text-sm text-danger">
               {copyError}
@@ -842,12 +1031,22 @@ export function ReviewPane({
             {saveError ||
               saveNote ||
               (over
-                ? 'Over the limit — trim it before you paste it in.'
+                ? letter
+                  ? `Over one page — cut it to ${LETTER_WORD_CEILING} words or fewer.`
+                  : 'Over the limit — trim it before you paste it in.'
                 : dirty
                   ? 'Unsaved edits'
                   : 'Nothing unsaved')}
           </p>
         </div>
+        {/* The export's own two lines, kept apart from the save's and the copy's: a PDF that
+            could not be set says nothing about whether the letter is stored. */}
+        {exportError && (
+          <p role="alert" className="mt-2 max-w-[62ch] text-sm text-danger">
+            {exportError}
+          </p>
+        )}
+        {exportNote && <p className="mt-2 text-sm text-accent">{exportNote}</p>}
       </section>
     </section>
   )

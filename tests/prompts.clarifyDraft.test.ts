@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildClarifyDraftPrompt } from '@/ai/prompts/clarifyDraft'
+import { newCoverLetter } from '@/lib/letter/letterhead'
 import type { ClarifyAnswer, Fact, Question } from '@/lib/types'
 
 // The system text is the line the whole step turns on, stated to the model word for word:
@@ -126,6 +127,21 @@ describe('buildClarifyDraftPrompt parts', () => {
     const clarifyAnswers: ClarifyAnswer[] = [{ id: 'c1', question: 'Which experience should lead?', answer: [] }]
     const text = body({ clarifyAnswers })
     expect(text).not.toContain('do not ask them again')
+  })
+
+  it('tells a cover letter what it is setting up, and leaves the reason to the candidate', () => {
+    // A model told only "Cover letter" sets up the wrong round — length and tone rather than
+    // which experience leads. The last sentence is why this is here at all: a pre-ticked reason
+    // for wanting to work somewhere is the one card this product must never offer.
+    const text = body({ question: newCoverLetter('Tom Candidate', 'tom@x.test') })
+    expect(text).toContain('This is a one-page cover letter to the company in the posting, for the role it advertises — not a form field.')
+    expect(text).toContain('Ask which experience should lead and whether a visible gap or pivot should be named.')
+    expect(text).toContain('Do not ask the candidate to choose a reason for wanting this company from options you wrote: that is theirs to say in their own words, and the draft will ask for it.')
+    expect(text).toContain('Never offer an option that has the candidate promise a move, a visa or working hours their standard answers do not state: an unmet location or authorisation requirement is named as it stands, or asked about.')
+  })
+
+  it('says none of that for a question the form actually asked', () => {
+    expect(body()).not.toContain('This is a one-page cover letter')
   })
 
   it('tells the model to number its questions c1, c2, …', () => {

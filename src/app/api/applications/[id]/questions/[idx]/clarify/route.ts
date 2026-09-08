@@ -87,9 +87,16 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   // A re-parse replaces the question list wholesale, so the slot may now hold a different
   // question. Attaching positioning questions written about the old one to the new one would
   // be worse than losing them, so it is refused. (The limit is irrelevant here — clarify does
-  // not read it — so only the wording is checked.)
+  // not read it — so only the wording and the kind are checked.)
+  //
+  // The kind is checked for the reason the draft route's `sameQuestion` checks it: a re-parse
+  // carries the cover letter to the end of the list, so the slot it held can come back holding a
+  // form question that reads `Cover letter` with no stated limit, which is a field real forms
+  // have. This step branches its own prompt on the kind, so positioning written for a one-page
+  // letter would otherwise be attached to that field — and the question answered back to the
+  // pane would carry neither the kind nor the letterhead the panel above it is drawn from.
   const current = after.questions[at]
-  if (!current || current.q !== asked.q) {
+  if (!current || current.q !== asked.q || current.kind !== asked.kind) {
     return Response.json({ error: 'questions changed while clarifying' }, { status: 409 })
   }
 

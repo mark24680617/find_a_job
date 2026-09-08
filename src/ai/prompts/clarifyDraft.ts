@@ -31,9 +31,28 @@ export interface ClarifyDraftInput {
   clarifyAnswers: ClarifyAnswer[]
 }
 
+/**
+ * The sentence a cover letter adds to the ask. A letter is not a form field, and a model told
+ * only "Cover letter" sets up the wrong round: it asks about length and tone rather than which
+ * experience leads. The third sentence is the point. The cards pre-select the model's
+ * recommendation so the fast path is to glance and draft, and a pre-ticked reason for wanting to
+ * work somewhere — drafted in the first person and signed — is precisely the sentence this
+ * product exists to never write. So the reason is left to the candidate, and the draft asks for
+ * it in their own words instead.
+ *
+ * The closing sentence is the same principle applied to the other card this round kept offering.
+ * Where a posting names a country the candidate has no authorisation for, the round's recommended
+ * option read "Address relocation and willingness to work UK hours directly" — a promise about
+ * somebody's life, pre-ticked, and the letter's rule 11 follows a positioning choice. About half
+ * the smoke runs then wrote the promise (the README's third pass). A requirement can be named as
+ * it stands; what the candidate will do about it is theirs to say.
+ */
+const LETTER_ASK = 'This is a one-page cover letter to the company in the posting, for the role it advertises — not a form field. Ask which experience should lead and whether a visible gap or pivot should be named. Do not ask the candidate to choose a reason for wanting this company from options you wrote: that is theirs to say in their own words, and the draft will ask for it. Never offer an option that has the candidate promise a move, a visa or working hours their standard answers do not state: an unmet location or authorisation requirement is named as it stands, or asked about.'
+
 /** The question whose answer this round is setting up. */
 function askPart(question: Question): string {
-  return `The question the answer will address:\n${question.q}`
+  const ask = `The question the answer will address:\n${question.q}`
+  return question.kind === 'cover-letter' ? `${ask}\n\n${LETTER_ASK}` : ask
 }
 
 /** The posting, verbatim — the material the model reads the role's real screens out of. */

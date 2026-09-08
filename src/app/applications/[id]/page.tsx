@@ -2,23 +2,33 @@
 
 import { useRouter } from 'next/navigation'
 import { use, useCallback, useEffect, useState } from 'react'
-import { AppShell, useUnsavedChanges } from '@/components/AppShell'
+import { AppShell, useCurrentUser, useUnsavedChanges } from '@/components/AppShell'
 import { InterviewsSection } from '@/components/interviews/InterviewsSection'
 import { ProcessSection } from '@/components/process/ProcessSection'
+import { AnswersDisclosure } from '@/components/review/AnswersDisclosure'
 import { QuestionList } from '@/components/review/QuestionList'
 import { ReviewPane } from '@/components/review/ReviewPane'
 import { QuestionsIntake } from '@/components/wizard/QuestionsIntake'
 import { apiFetch } from '@/lib/apiFetch'
+import { isCoverLetter, newCoverLetter } from '@/lib/letter/letterhead'
 import { readable } from '@/lib/readable'
+import { logInterviewPatch, pastApplying, showsProcess } from '@/lib/stage'
 import type { Application, Fact, InterviewRound, Profile, Question } from '@/lib/types'
 
 /**
- * The application workspace: the screen where a form gets answered.
+ * The application workspace: the screen where a form gets answered, and then the screen where
+ * its interviews are run.
  *
  * A form with no questions yet opens the intake. Once it has questions it becomes two columns —
  * the list of questions on the left, the selected question's answer on the right — and stays
  * that way. Re-parsing is possible from here but never quiet: it replaces the whole list, so it
  * is put behind an intake that says what will be lost.
+ *
+ * The screen follows the stage. While the record is a draft the answers are the whole of it, and
+ * nothing else is drawn. Once it is being interviewed, the loop is what it is for: "What to
+ * expect" appears, and the answers — sent, and now the record of work rather than the work —
+ * fold away behind one line. They stay mounted while folded: the pane inside holds the one piece
+ * of unsaved work on this screen, and a collapse must not throw an answer away.
  *
  * The one piece of unsaved state on the page is the answer being edited. The selected question's
  * pane reports whether its box holds edits; the page guards both leaving the page (through the
@@ -36,6 +46,9 @@ export default function ApplicationPage({ params }: PageProps<'/applications/[id
 
 function ApplicationWorkspace({ id }: { id: string }) {
   const router = useRouter()
+  // The account's own name and email, which seed the letterhead when the letter is created —
+  // this screen renders inside the shell, so they are already here and nobody types them twice.
+  const user = useCurrentUser()
   const [app, setApp] = useState<Application | null>(null)
   // Facts indexed by id so a citation can show the claim and source behind it. A failed profile
   // load degrades citations to "source not found" rather than blocking the whole screen.
@@ -50,10 +63,17 @@ function ApplicationWorkspace({ id }: { id: string }) {
   const [selectedDirty, setSelectedDirty] = useState(false)
   const [reparsing, setReparsing] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [letterError, setLetterError] = useState('')
+
+  // Closed to begin with, and only ever moved by the disclosure's own control: a record that
+  // becomes past-applying while the page is open folds because `collapsible` flips, and this
+  // was already false.
+  const [answersOpen, setAnswersOpen] = useState(false)
 
   const [marking, setMarking] = useState(false)
   const [markError, setMarkError] = useState('')
   const [logging, setLogging] = useState(false)
+  const [stageError, setStageError] = useState('')
 
   /**
    * Re-read the fact bank. Best-effort: citations still render without it, just without their
@@ -147,6 +167,37 @@ function ApplicationWorkspace({ id }: { id: string }) {
   }
 
   /**
+   * Add the cover letter as one more question on the list. The list grows, so the pane remounts
+   * and its unsaved answer goes with it — asked about first, as adding questions is. One PATCH
+   * through the endpoint deletes use: the page already round-trips the whole array, and a create
+   * route would guard a button this page never shows twice.
+   */
+  async function writeLetter() {
+    if (!app) return
+    if (selectedDirty && !window.confirm('Write a cover letter? Your unsaved edits will be lost.')) {
+      return
+    }
+    setLetterError('')
+    try {
+      const updated = await apiFetch<Application>(`/api/applications/${app.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questions: [...app.questions, newCoverLetter(user.displayName ?? '', user.email ?? '')],
+        }),
+      })
+      setApp(updated)
+      // The letter is the row that was just appended, and it is what the person came for.
+      setSelected(updated.questions.length - 1)
+    } catch (err) {
+      setLetterError(
+        readable(err instanceof Error ? err.message : '') ||
+          'That didn’t add the cover letter. Try again.',
+      )
+    }
+  }
+
+  /**
    * Drop one question the form does not actually ask. The whole remaining array is sent, so
    * every other question's draft and final survive the PATCH — the same last-writer-wins the
    * mark-applied path accepts on a single-user MVP. Throws a readable message on failure so
@@ -170,6 +221,42 @@ function ApplicationWorkspace({ id }: { id: string }) {
         readable(err instanceof Error ? err.message : '') || 'That didn’t delete. Try again.',
       )
     }
+  }
+
+  /**
+   * Open the notice intake, and move the record into the interview stage on the way. Saying you
+   * have an interview is saying the record is being interviewed, so the person should not have
+   * to go back to the board and move it themselves.
+   *
+   * The copy on screen moves first and the PATCH follows, so the intake opens in the same render
+   * rather than after a round trip. A record already interviewing — or past it, at an offer or a
+   * rejection — is not touched: `logInterviewPatch` returns nothing for those, and the interviews
+   * POST already refuses to drag them back. A failed PATCH leaves the optimistic copy where it
+   * is, because logging the round will move the status server-side regardless.
+   */
+  function logInterview() {
+    if (!app) return
+    // Every attempt starts clean, as the mark-applied path does: after a failed PATCH the copy
+    // on screen already reads 'interviewing', so nothing below here runs again, and the line
+    // would otherwise sit under the header for the rest of the session — including after the
+    // intake it was warning about has been cancelled.
+    setStageError('')
+    const patch = logInterviewPatch(app)
+    setLogging(true)
+    if (!patch) return
+    setApp((prev) => (prev ? { ...prev, ...patch } : prev))
+    apiFetch<Application>(`/api/applications/${app.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+      // The record just came back from the server, so it is safe to take whole.
+      .then(setApp)
+      .catch(() =>
+        setStageError(
+          'Couldn’t save the move to Interviewing — logging the round will still move it.',
+        ),
+      )
   }
 
   /**
@@ -232,6 +319,12 @@ function ApplicationWorkspace({ id }: { id: string }) {
   // 'interviewing', and a header that then offered "Mark applied" again would be offering to
   // move it backwards on a record that is plainly further along than that.
   const applied = app.status !== 'draft'
+  // One letter per application, decided here: with one on the list the button is not offered
+  // rather than offered and refusing.
+  const hasLetter = questions.some(isCoverLetter)
+  // Past applying the answers are folded away, and the disclosure's own row carries their
+  // count — so the header stops saying it, and the number is on screen once.
+  const past = pastApplying(app.status)
   // Keep the selection in range if a re-parse shortened the list.
   const current = Math.min(selected, Math.max(0, questions.length - 1))
 
@@ -248,7 +341,7 @@ function ApplicationWorkspace({ id }: { id: string }) {
             </span>
           </div>
           <p className="mt-1 text-[1.0625rem] text-ink-2">{app.role}</p>
-          {hasQuestions && (
+          {hasQuestions && !past && (
             <p className="tnum mt-2 text-sm text-ink-3">
               {answered} of {questions.length} answered
             </p>
@@ -261,7 +354,7 @@ function ApplicationWorkspace({ id }: { id: string }) {
               type="button"
               className="btn btn-quiet"
               disabled={logging}
-              onClick={() => setLogging(true)}
+              onClick={logInterview}
             >
               Log an interview
             </button>
@@ -283,14 +376,23 @@ function ApplicationWorkspace({ id }: { id: string }) {
               {markError}
             </p>
           )}
+          {stageError && (
+            <p role="alert" className="max-w-[24ch] text-right text-sm text-danger">
+              {stageError}
+            </p>
+          )}
         </div>
       </header>
 
-      <ProcessSection
-        app={app}
-        rounds={rounds}
-        onResearched={(process) => setApp((prev) => (prev ? { ...prev, process } : prev))}
-      />
+      {/* Research about what is coming, so it is drawn only while something is: a draft has no
+          loop yet, and an offer or a rejection is past it. */}
+      {showsProcess(app.status) && (
+        <ProcessSection
+          app={app}
+          rounds={rounds}
+          onResearched={(process) => setApp((prev) => (prev ? { ...prev, process } : prev))}
+        />
+      )}
 
       <InterviewsSection
         appId={app.id}
@@ -302,66 +404,94 @@ function ApplicationWorkspace({ id }: { id: string }) {
           // On screen before anything comes back — as a card below and as a pin on the ledger
           // above. `reloadApp` then re-reads both the record and the list behind it.
           setRounds((prev) => [...prev, round])
+          // The POST moved the status itself, so a failed PATCH has nothing left to warn about.
+          setStageError('')
           reloadApp()
         }}
       />
 
-      {!hasQuestions || reparsing || adding ? (
-        <QuestionsIntake
-          app={app}
-          append={adding}
-          onParsed={(next) => {
-            // An append lands on the first question it just added — that is what the person
-            // came here to write. Read before the state moves, since `app` is the pre-parse
-            // record; `current` clamps, so a parse that added nothing stays in range.
-            const landOn = adding ? app.questions.length : 0
-            setApp(next)
-            setAdding(false)
-            setReparsing(false)
-            setSelected(landOn)
-          }}
-          onCancel={
-            reparsing ? () => setReparsing(false) : adding ? () => setAdding(false) : undefined
-          }
-        />
-      ) : (
-        <>
-          <div className="mt-8 flex items-center justify-end">
-            <button
-              type="button"
-              className="btn-link text-sm"
-              onClick={() => setReparsing(true)}
-            >
-              Re-parse form
-            </button>
-          </div>
-
-          <div className="mt-3 grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8">
-            <QuestionList
-              questions={questions}
-              selected={current}
-              onSelect={select}
-              onAddQuestion={startAdding}
-            />
-            {/* Keyed on the length as well as the index: after deleting question k, the one
-                that was at k+1 sits at k, and an index-only key would hand a different
-                question the old pane's state — its story box, its open setup panel, its
-                selected citation. A re-parse and an append move the length too, and both
-                want the same fresh pane. */}
-            <ReviewPane
-              key={`${current}:${questions.length}`}
+      <AnswersDisclosure
+        collapsible={past}
+        open={answersOpen}
+        onToggle={() => setAnswersOpen((o) => !o)}
+        answered={answered}
+        total={questions.length}
+      >
+        {!hasQuestions || reparsing || adding ? (
+          <>
+            <QuestionsIntake
               app={app}
-              index={current}
-              factsById={factsById}
-              onQuestionChange={applyQuestion}
-              onAppChange={setApp}
-              onFactsChanged={loadFacts}
-              onDirtyChange={setSelectedDirty}
-              onDelete={() => deleteQuestion(current)}
+              append={adding}
+              // The letter is offered here only while this intake IS the screen. A form whose parse
+              // legitimately found no questions leaves it standing, and the question list's footer
+              // — the other place the letter is offered — is not on screen to be reached. A
+              // re-parse or an append has that list behind it and its own Cancel back to it.
+              onWriteLetter={hasQuestions ? undefined : () => void writeLetter()}
+              onParsed={(next) => {
+                // An append lands on the first question it just added — that is what the person
+                // came here to write. Read before the state moves, since `app` is the pre-parse
+                // record; `current` clamps, so a parse that added nothing stays in range.
+                const landOn = adding ? app.questions.length : 0
+                setApp(next)
+                setAdding(false)
+                setReparsing(false)
+                setSelected(landOn)
+              }}
+              onCancel={
+                reparsing ? () => setReparsing(false) : adding ? () => setAdding(false) : undefined
+              }
             />
-          </div>
-        </>
-      )}
+            {letterError && (
+              <p role="alert" className="mt-3 text-sm text-danger">
+                {letterError}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="mt-8 flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+              {letterError && (
+                <p role="alert" className="text-sm text-danger">
+                  {letterError}
+                </p>
+              )}
+              <button
+                type="button"
+                className="btn-link text-sm"
+                onClick={() => setReparsing(true)}
+              >
+                Re-parse form
+              </button>
+            </div>
+
+            <div className="mt-3 grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8">
+              <QuestionList
+                questions={questions}
+                selected={current}
+                onSelect={select}
+                onAddQuestion={startAdding}
+                onWriteLetter={hasLetter ? undefined : () => void writeLetter()}
+              />
+              {/* Keyed on the length as well as the index: after deleting question k, the one
+                  that was at k+1 sits at k, and an index-only key would hand a different
+                  question the old pane's state — its story box, its open setup panel, its
+                  selected citation. A re-parse and an append move the length too, and both
+                  want the same fresh pane. */}
+              <ReviewPane
+                key={`${current}:${questions.length}`}
+                app={app}
+                index={current}
+                factsById={factsById}
+                onQuestionChange={applyQuestion}
+                onAppChange={setApp}
+                onFactsChanged={loadFacts}
+                onDirtyChange={setSelectedDirty}
+                onDelete={() => deleteQuestion(current)}
+              />
+            </div>
+          </>
+        )}
+      </AnswersDisclosure>
     </main>
   )
 }

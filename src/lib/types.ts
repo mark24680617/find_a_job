@@ -31,6 +31,20 @@ export interface FactUpdate { id: string; claim: string; tags: string[] }       
 export interface FactSkip { id?: string; reason: string }                                 // already known, and why
 export interface Changeset { adds: FactAdd[]; updates: FactUpdate[]; skips: FactSkip[] }
 export interface QConstraints { limit?: number; unit?: 'words' | 'chars'; type: 'short-text' | 'long-text' | 'select' | 'file'; required: boolean }
+/** The one kind a question can be besides a field of the form. Absent means a form question. */
+export type QuestionKind = 'cover-letter'
+
+/**
+ * What goes above the letter on the page: who it is from and, when known, who it is to. All
+ * strings, blanks allowed — a blank is a line the PDF omits, never a line it guesses. Lives on
+ * the cover-letter question, not on the profile: the profile document is replaced whole by the
+ * editor's PUT and by two routes' setProfile, and a field there is a field three writers can
+ * clobber. `companyAddress` may hold several lines, newline-separated.
+ */
+export interface Letterhead {
+  name: string; email: string; phone: string; location: string
+  recipient: string; recipientTitle: string; companyAddress: string
+}
 export interface Question {
   q: string; constraints: QConstraints
   draft?: { text: string; citations: Citation[] }
@@ -38,6 +52,8 @@ export interface Question {
   clarify?: ClarifyQuestion[]; clarifyAnswers?: ClarifyAnswer[]
   story?: string     // the candidate's own telling behind this answer, in their words
   status: 'pending' | 'drafted' | 'final'
+  kind?: QuestionKind        // absent on every stored question today: no migration
+  letter?: Letterhead        // cover-letter questions only
 }
 export interface TimelineEvent { event: string; at: string }
 export interface Application {

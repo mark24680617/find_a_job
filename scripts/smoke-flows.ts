@@ -16,13 +16,14 @@
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts mock <process-transcript.txt> [stageOrder]
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts take-home "<company>" "<role>" <brief.txt>
  * npx tsx --env-file=.env.local scripts/smoke-flows.ts assignment <file.pdf>
+ * npx tsx --env-file=.env.local scripts/smoke-flows.ts cover-letter [no-story]
  *
  * This spends a real API call, so it is a thing you run deliberately — the unit suite
  * never touches the network. `--env-file` is what supplies GEMINI_API_KEY.
  *
  * No top-level await: tsx compiles this to CJS, where it is a syntax error.
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { parseAshby } from '../src/adapters/ashby'
 import { runProfileIngest } from '../src/ai/flows/profileIngest'
 import { runJobInterpret } from '../src/ai/flows/jobInterpret'
@@ -50,6 +51,16 @@ import {
 import { normalizeWs } from '../src/lib/research/quotes'
 import { roleFamily } from '../src/lib/research/roleFamily'
 import { cutBrief, MAX_PDF_BYTES, MIN_BRIEF_CHARS } from '../src/lib/assignment'
+import { letterProblems } from '../src/lib/letter/guard'
+import {
+  blankLetterhead,
+  LETTER_WORD_CEILING,
+  LETTER_WORD_TARGET,
+  newCoverLetter,
+  todayIso,
+} from '../src/lib/letter/letterhead'
+import { renderLetterPdf } from '../src/lib/letter/pdf'
+import { callGenkit, type GenerateCall } from '../src/ai/genkit'
 import type {
   AnswerDraftOut,
   ClarifyDraftOut,
@@ -68,6 +79,7 @@ import type {
   ClarifyAnswer,
   Fact,
   InterviewRound,
+  Letterhead,
   MockTurn,
   ParsedJob,
   PracticeMode,
@@ -1406,6 +1418,171 @@ async function smokeAssignment(file: string): Promise<void> {
   if (lines.length > 40) console.log(`  … ${lines.length - 40} more lines`)
 }
 
+// ---- cover-letter: the positioning round, the letter, and the page it prints on ------------
+// The same Marram posting the answerDraft mode uses, asked as a question of kind `cover-letter`
+// rather than as a form field. There is no flow of its own to call: the letter's SYSTEM is
+// chosen by `buildAnswerDraftPrompt` off the kind, and `runAnswerDraft` is what the route runs
+// for a letter exactly as it does for an answer. The letterhead is filled in as somebody who
+// knows who they are writing to would fill it in, the clarify round is run and every
+// recommendation accepted, and what comes back is set on a real US-Letter page at the end.
+// Tom's UK authorisation gate is unmet and explicit, so this is also the run where rule 8 has
+// something real to be honest about.
+
+const TOM_LETTERHEAD: Letterhead = {
+  ...blankLetterhead('Tom Candidate', 'tom@example.test'),
+  location: 'Seattle, WA',
+  recipient: 'Dana Wu',
+  recipientTitle: 'Head of Engineering',
+}
+
+const TOM_LETTER: Question = {
+  ...newCoverLetter(TOM_LETTERHEAD.name, TOM_LETTERHEAD.email),
+  letter: TOM_LETTERHEAD,
+}
+
+/**
+ * Two sentences of TOM_BLURB, as the story box on the pane would hold them. Tideline is in no
+ * fact of the bank on purpose: rule 12 asks the letter to write from the candidate's own telling
+ * where there is one, and a run whose only material is the eight facts cannot show whether it did.
+ */
+const TOM_LETTER_STORY =
+  'At Northwind Logistics I have been the Senior Backend Engineer since March 2024, and since ' +
+  'January I have been leading a team of four. Last year I built and open-sourced Tideline, a ' +
+  'Postgres migration linter; it has 900 stars on GitHub and is used by three other teams ' +
+  'inside Northwind.'
+
+// Written beside the transcript of the run that produced it, because that is the only way to
+// read the two together: the letter is text in the transcript and a page here.
+const LETTER_PDF = new URL(
+  '../docs/superpowers/smoke/2026-09-07-cover-letter/letter.pdf',
+  import.meta.url,
+)
+
+const since = (start: number) => ((Date.now() - start) / 1000).toFixed(1)
+
+/**
+ * A counted pass-through to the model, which is the only way to see from out here what a draft
+ * actually cost. `runAnswerDraft` spends a second call when its guards reject the first letter,
+ * and `generateStructured` spends one when the output misses the schema; neither is visible in
+ * what comes back, and the difference between one call and two is most of the wait the pane has
+ * to promise the person.
+ *
+ * It wraps `callGenkit` rather than building a client of its own, so the run this reports as the
+ * product's wait goes through the same instance production goes through.
+ */
+function countedGenerate(): { generate: GenerateCall; calls: () => number } {
+  let calls = 0
+  return {
+    generate: (options) => {
+      calls += 1
+      return callGenkit(options)
+    },
+    calls: () => calls,
+  }
+}
+
+/**
+ * The letter, and the four things a form answer is not measured by: its length against the target
+ * and the ceiling, the guards `letterProblems` holds it to — that same ceiling, and the salutation
+ * and close the letterhead asked for — that no contact detail reached the model, and what the
+ * draft cost. `letterProblems` is empty on anything the
+ * flow returns, so printing it says the check ran against the text that actually came back
+ * rather than taking the flow's word for it.
+ */
+function reportLetter(out: AnswerDraftOut, letter: Letterhead, calls: number, seconds: string): void {
+  reportDraft(out, TOM_LETTER, TOM_FACTS)
+
+  const words = countUnits(out.text, 'words')
+  const problems = letterProblems(out.text, letter)
+  // Spec §4.1: email, phone and location are typeset by the layout and never enter a context
+  // window, so no letter can carry one. The text is where it would show if one had.
+  const leaked = [letter.email, letter.phone, letter.location].filter(
+    (value) => value !== '' && out.text.includes(value),
+  )
+
+  console.log('\nletter checks')
+  console.log(
+    `  ${words} words (target ${LETTER_WORD_TARGET.min}–${LETTER_WORD_TARGET.max}, ceiling` +
+      ` ${LETTER_WORD_CEILING}): ${words <= LETTER_WORD_CEILING ? 'ok' : 'OVER THE CEILING'}`,
+  )
+  // Named for what `letterProblems` actually returns rather than for the salutation and close
+  // alone: it carries the ceiling too, so a letter that opened and closed perfectly and merely ran
+  // long would fail here, and a line labelled for the greeting would be naming the wrong failure.
+  console.log(
+    `  the letter's own guards (ceiling, salutation, close): ${problems.length === 0 ? 'ok' : 'FAILED'}`,
+  )
+  for (const problem of problems) console.log(`      ${problem}`)
+  console.log(
+    `  no contact detail in the letter: ${leaked.length === 0 ? 'ok' : `IN THE TEXT: ${leaked.join(', ')}`}`,
+  )
+  console.log(`  model calls for the draft: ${calls} (one means nothing needed correcting)`)
+  console.log(`  drafted in ${seconds}s`)
+}
+
+/**
+ * `story` is the one input a letter cannot be judged without seeing both ways: with a telling the
+ * lead block has something the facts do not say, and with none the prompt's own rule 1 asks for it
+ * instead. The mode always passed one, so the second case could not be run at all; `no-story` runs
+ * it. Everything else about the run is identical, and the header line records which case it was so
+ * a saved transcript can still be told apart from the other.
+ */
+async function smokeCoverLetter(withStory: boolean): Promise<void> {
+  console.log(
+    `cover-letter: ${MARRAM.role} @ ${MARRAM.company}, to ${TOM_LETTERHEAD.recipient}` +
+      ` x ${TOM_FACTS.length} facts` +
+      `, ${withStory ? `a ${TOM_LETTER_STORY.length}-char telling` : 'no telling'}`,
+  )
+
+  const clarifyStarted = Date.now()
+  const clarify = await runClarifyDraft({
+    question: TOM_LETTER,
+    jdText: MARRAM_JD,
+    facts: TOM_FACTS,
+    standardAnswers: TOM_STANDARD_ANSWERS,
+    clarifyAnswers: [],
+  })
+  const clarifySeconds = since(clarifyStarted)
+  const chosen = reportClarify(clarify)
+  console.log(`\nasked in ${clarifySeconds}s`)
+
+  console.log('\n\n=== the letter, with every recommendation accepted ===')
+  console.log('chose: ' + chosen.map((c) => `${c.id}=${c.answer.join('/')}`).join(', '))
+  const { generate, calls } = countedGenerate()
+  const started = Date.now()
+  const out = await runAnswerDraft(
+    {
+      question: TOM_LETTER,
+      parsed: MARRAM,
+      jdText: MARRAM_JD,
+      facts: TOM_FACTS,
+      standardAnswers: TOM_STANDARD_ANSWERS,
+      voiceRules: TOM_VOICE_RULES,
+      humanAnswers: [],
+      clarifyAnswers: chosen,
+      story: withStory ? TOM_LETTER_STORY : undefined,
+      // The three fields the prompt is given, read off the letterhead exactly as the draft
+      // route reads them off the record.
+      letter: {
+        name: TOM_LETTERHEAD.name,
+        recipient: TOM_LETTERHEAD.recipient,
+        recipientTitle: TOM_LETTERHEAD.recipientTitle,
+      },
+    },
+    generate,
+  )
+  reportLetter(out, TOM_LETTERHEAD, calls(), since(started))
+
+  const dateIso = todayIso()
+  const bytes = await renderLetterPdf({
+    letter: TOM_LETTERHEAD,
+    company: MARRAM.company,
+    text: out.text,
+    dateIso,
+  })
+  writeFileSync(LETTER_PDF, bytes)
+  console.log(`\npdf: ${bytes.length} bytes, dated ${dateIso} -> ${LETTER_PDF.pathname}`)
+}
+
 /**
  * The third positional: which stage of the saved loop to practise, 1 when it is absent. A typo
  * throws rather than falling back — practising stage 1 and filing it as stage 11 is the one
@@ -1425,7 +1602,7 @@ async function main(): Promise<void> {
   // `process` mode reads it as the company, and takes the role from a third. `brief` and `mock`
   // read it as a saved `process` transcript, and the third as the stage of that loop to run.
   // `take-home` reads the first two as `process` does and takes the brief from a fourth;
-  // `assignment` reads the second as a PDF.
+  // `assignment` reads the second as a PDF, and `cover-letter` reads it as `no-story` or nothing.
   const [flow, file, role, brief] = process.argv.slice(2)
   if (flow === 'profileIngest' && file) return smokeProfileIngest(file)
   if (flow === 'jobInterpret') return smokeJobInterpret()
@@ -1441,13 +1618,21 @@ async function main(): Promise<void> {
   if (flow === 'mock' && file) return smokeMock(file, stageOrderArg(role))
   if (flow === 'take-home' && file && role && brief) return smokeTakeHome(file, role, brief)
   if (flow === 'assignment' && file) return smokeAssignment(file)
+  // Only the two forms the usage line names. `file !== 'no-story'` would read a typo —
+  // `nostory`, `--no-story`, `story` — as "run with the telling", spend a real API call on the
+  // case nobody asked for, and print a transcript that looks entirely correct; which of the two
+  // cases ran is the whole of what the second prompt pass turned on.
+  if (flow === 'cover-letter' && (file === undefined || file === 'no-story')) {
+    return smokeCoverLetter(file === undefined)
+  }
 
   console.error(
     'usage: tsx scripts/smoke-flows.ts profileIngest <file> | jobInterpret |' +
       ' formParse text|image | answerDraft | clarifyDraft | feedbackDistill | story |' +
       ' interview | reconcile | process "<company>" "<role>" |' +
       ' brief <transcript> [stageOrder] | mock <transcript> [stageOrder] |' +
-      ' take-home "<company>" "<role>" <brief.txt> | assignment <file.pdf>',
+      ' take-home "<company>" "<role>" <brief.txt> | assignment <file.pdf> |' +
+      ' cover-letter [no-story]',
   )
   process.exitCode = 1
 }

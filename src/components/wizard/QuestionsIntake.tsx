@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Working } from '@/components/Working'
 import { apiFetch } from '@/lib/apiFetch'
+import { isCoverLetter } from '@/lib/letter/letterhead'
 import { readable } from '@/lib/readable'
 import type { Application } from '@/lib/types'
 
@@ -47,18 +48,31 @@ interface Props {
   onCancel?: () => void
   /** Add to the list rather than replace it — the parsed questions go on the end. */
   append?: boolean
+  /**
+   * Append the cover letter instead of parsing anything. Passed only where this intake stands in
+   * for the whole workspace — an application with no questions on it — because the question
+   * list's footer, which is where the letter is offered, is not on screen then. A form that asks
+   * for nothing but a name, an email and a resume is exactly the form a letter matters most on.
+   */
+  onWriteLetter?: () => void
 }
 
-export function QuestionsIntake({ app, onParsed, onCancel, append = false }: Props) {
+export function QuestionsIntake({ app, onParsed, onCancel, append = false, onWriteLetter }: Props) {
   const [text, setText] = useState('')
   const [shots, setShots] = useState<Shot[]>([])
   const [dragging, setDragging] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  const existing = app.questions.length
-  const drafted = app.questions.filter((q) => q.status === 'drafted').length
-  const finalized = app.questions.filter((q) => q.status === 'final').length
+  // A cover letter is not on the form, so the parse neither reads it nor replaces it: the route
+  // carries it through a replace (spec §6.2). Every count here is therefore over the form's own
+  // questions — counting the letter among what is about to be lost would be a threat against
+  // the one thing the parse hands back.
+  const formQuestions = app.questions.filter((q) => !isCoverLetter(q))
+  const hasLetter = app.questions.length !== formQuestions.length
+  const existing = formQuestions.length
+  const drafted = formQuestions.filter((q) => q.status === 'drafted').length
+  const finalized = formQuestions.filter((q) => q.status === 'final').length
   // Only a write that replaces something needs the warning and the danger button, so appending
   // onto a form that already has questions is not a re-parse.
   const reparsing = existing > 0 && !append
@@ -133,7 +147,7 @@ export function QuestionsIntake({ app, onParsed, onCancel, append = false }: Pro
           <p className="max-w-[64ch] text-[0.9375rem] leading-relaxed text-ink">
             Re-parsing replaces all {existing} question{existing === 1 ? '' : 's'} and discards
             any drafts ({drafted} drafted, {finalized} finalized). What you’ve written on the
-            current questions can’t be recovered.
+            current questions can’t be recovered.{hasLetter && ' Your cover letter is kept.'}
           </p>
         </div>
       )}
@@ -240,6 +254,13 @@ export function QuestionsIntake({ app, onParsed, onCancel, append = false }: Pro
           {onCancel && (
             <button type="button" className="btn btn-quiet" disabled={busy} onClick={onCancel}>
               Cancel
+            </button>
+          )}
+          {/* A quiet link beside the parse, as it is in the question list's footer: reading the
+              form is what this screen is for, and the letter is the one question no form asks. */}
+          {onWriteLetter && (
+            <button type="button" className="btn-link text-sm" disabled={busy} onClick={onWriteLetter}>
+              Write a cover letter
             </button>
           )}
           <Working

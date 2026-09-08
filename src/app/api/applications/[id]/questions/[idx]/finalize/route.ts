@@ -2,6 +2,7 @@ import { runFeedbackDistill } from '@/ai/flows/feedbackDistill'
 import { FlowOutputError } from '@/ai/genkit'
 import { requireUser } from '@/lib/auth'
 import { getApplication, getProfile, setProfile, updateApplication } from '@/lib/db'
+import { isCoverLetter } from '@/lib/letter/letterhead'
 import type { Application, Question, VoiceRule } from '@/lib/types'
 
 // Save the human's final answer to one question, then learn from what they changed. Node
@@ -59,8 +60,13 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   // Nothing was edited if there is no draft to compare the final against, or the human kept
   // it word for word. Either way there is no signal, so the model is never called and the
   // save stands on its own.
+  //
+  // A cover letter is not learned from either, edited or not. Rules are appended to a cap of
+  // twelve, oldest falling off, and every rule is sent into every answer draft: polishing one
+  // letter would teach salutation and cadence rules that then govern hundred-word form answers,
+  // and push out rules learned from real ones.
   const draft = existing.draft
-  if (!draft || draft.text === final) {
+  if (!draft || draft.text === final || isCoverLetter(existing)) {
     return Response.json({ question, newRules: [] })
   }
 

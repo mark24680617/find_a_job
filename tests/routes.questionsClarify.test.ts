@@ -262,6 +262,23 @@ describe('POST .../questions/[idx]/clarify — the failure and freshness paths',
     expect(updateApplication).not.toHaveBeenCalled()
   })
 
+  it('409s a slot whose wording survived but whose kind did not', async () => {
+    // A re-parse carries the cover letter to the end of the list, so the slot it held can come
+    // back holding a form question that reads `Cover letter` with no stated limit — a field real
+    // forms have. Clarify branches its own prompt on the kind, so positioning written for a
+    // one-page letter must not be attached to that field.
+    const letter = question({ q: 'Cover letter', kind: 'cover-letter', constraints: { type: 'long-text', required: false } })
+    const field = question({ q: 'Cover letter', constraints: { type: 'long-text', required: false } })
+    getApplication
+      .mockResolvedValueOnce(application({ questions: [letter, other] }))
+      .mockResolvedValueOnce(application({ questions: [field, other] }))
+
+    const res = await POST(post({}), ctx('app-1', '0'))
+    expect(res.status).toBe(409)
+    await expect(res.json()).resolves.toEqual({ error: 'questions changed while clarifying' })
+    expect(updateApplication).not.toHaveBeenCalled()
+  })
+
   it('writes onto the record as it is after the call, not the copy it read before', async () => {
     getApplication
       .mockResolvedValueOnce(application())

@@ -6,6 +6,7 @@
  * rather than rewritten, and `tests/prompts.answerDraft.test.ts` holds a copy that fails
  * the build if this one drifts.
  */
+import { buildCoverLetterPrompt } from '@/ai/prompts/coverLetter'
 import type { Part } from '@/ai/genkit'
 import type { AskHuman, ClarifyAnswer, Fact, ParsedJob, QConstraints, Question } from '@/lib/types'
 
@@ -49,6 +50,13 @@ export interface AnswerDraftInput {
    * decisive material here when it is present. Rule 9 is what it is for.
    */
   story?: string
+  /**
+   * The three letterhead fields the letter's prompt needs, on a cover-letter question and
+   * nowhere else. Email, phone and location are deliberately absent: they are typeset by the
+   * layout module and never enter a context window, because a posting somebody else wrote that
+   * said "include your phone number" would otherwise land it in a document written to be sent.
+   */
+  letter?: { name: string; recipient: string; recipientTitle: string }
 }
 
 /**
@@ -79,7 +87,7 @@ function askPart(question: Question): string {
  * answer they submit. Everything else goes, `scope` above all: rule 4 is judged on it, so a
  * posting sent without it silently drops a hard rule.
  */
-function jobPart(parsed: ParsedJob): string {
+export function jobPart(parsed: ParsedJob): string {
   const { company, role, roleFacts, gates, themes, scope } = parsed
   return `Parsed job:\n${JSON.stringify({ company, role, roleFacts, gates, themes, scope })}`
 }
@@ -91,7 +99,7 @@ function jobPart(parsed: ParsedJob): string {
  * than sent as an empty header: an application whose posting was never captured still drafts,
  * on the parsed job alone, and an empty section is noise the model has to account for.
  */
-function jobPostingPart(jdText: string): string | null {
+export function jobPostingPart(jdText: string): string | null {
   if (!jdText.trim()) return null
   return `The job posting:\n${jdText}`
 }
@@ -104,7 +112,7 @@ function jobPostingPart(jdText: string): string | null {
  * empty one reads as "there is nothing to cite", which is true and sends the model to
  * askHuman instead of to invention.
  */
-function factsPart(facts: Fact[]): string {
+export function factsPart(facts: Fact[]): string {
   const lines = facts.map((f) => `${f.id}: ${f.claim}`)
   return `Candidate facts (cite these by id):\n${lines.join('\n') || '(none)'}`
 }
@@ -114,7 +122,7 @@ function factsPart(facts: Fact[]): string {
  * a key the resume never stated, so sending it would hand the model a non-answer dressed as
  * one; those keys are dropped, and their absence is what makes the model ask.
  */
-function standardAnswersPart(answers: Record<string, string>): string | null {
+export function standardAnswersPart(answers: Record<string, string>): string | null {
   const lines = Object.entries(answers)
     .filter(([, v]) => v.trim() !== '' && v.trim().toUpperCase() !== 'UNKNOWN')
     .map(([k, v]) => `${k}: ${v}`)
@@ -122,7 +130,7 @@ function standardAnswersPart(answers: Record<string, string>): string | null {
   return `Standard answers the candidate has already settled:\n${lines.join('\n')}`
 }
 
-function voiceRulesPart(rules: string[]): string | null {
+export function voiceRulesPart(rules: string[]): string | null {
   if (rules.length === 0) return null
   const lines = rules.map((rule) => `- ${rule}`)
   return `Voice rules — how this person writes. Apply every one:\n${lines.join('\n')}`
@@ -133,7 +141,7 @@ function voiceRulesPart(rules: string[]): string | null {
  * unanswered askHuman is still a hole, and passing the question along as though it were
  * material is exactly the "write around it" move rule 1 forbids.
  */
-function humanAnswersPart(items: AskHuman[]): string | null {
+export function humanAnswersPart(items: AskHuman[]): string | null {
   const answered = items.filter((item) => item.answer?.trim())
   if (answered.length === 0) return null
   const blocks = answered.map((item) => `Q: ${item.question}\nA (from the candidate): ${item.answer}`)
@@ -149,7 +157,7 @@ function humanAnswersPart(items: AskHuman[]): string | null {
  *
  * Blank drops the section, like every other empty part.
  */
-function storyPart(story: string | undefined): string | null {
+export function storyPart(story: string | undefined): string | null {
   if (!story?.trim()) return null
   return `The candidate's own telling (use its specifics, keep its truth, raise its craft):\n${story}`
 }
@@ -160,7 +168,7 @@ function storyPart(story: string | undefined): string | null {
  * rather than re-deciding. Only answered ones go, and an answer with several selected values
  * is joined into one line; an empty set drops the section, like every other empty part.
  */
-function positioningChoicesPart(clarifyAnswers: ClarifyAnswer[]): string | null {
+export function positioningChoicesPart(clarifyAnswers: ClarifyAnswer[]): string | null {
   const chosen = clarifyAnswers
     .map((a) => ({ question: a.question, answer: a.answer.filter((v) => v.trim()) }))
     .filter((a) => a.answer.length > 0)
@@ -180,6 +188,10 @@ export function buildAnswerDraftPrompt(input: AnswerDraftInput): {
   system: string
   parts: Part[]
 } {
+  // A cover letter is a question like any other here, and the only one whose instructions are a
+  // different document: the branch is on the kind, so every caller — the flow, the draft route,
+  // the smoke — reaches the right SYSTEM by asking for a draft, as it always did.
+  if (input.question.kind === 'cover-letter') return buildCoverLetterPrompt(input)
   if (!input.question.q.trim()) throw new Error('answerDraft needs a question')
   const sections = [
     askPart(input.question),

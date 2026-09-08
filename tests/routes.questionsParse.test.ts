@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Application, ParsedJob, Question } from '@/lib/types'
 import type { FormParseOut } from '@/ai/schemas'
+import { newCoverLetter } from '@/lib/letter/letterhead'
 
 // The handler with everything behind it faked: no Admin SDK, no model call. What is under
 // test is the parse contract — what counts as a form worth sending, what a parsed question
@@ -313,5 +314,53 @@ describe('POST .../questions/parse — appending', () => {
     getApplication.mockResolvedValue(application({ questions: answered }))
     await POST(post({ text: 'Q1', append: true }), ctx('app-1'))
     expect(patchOf().parsed).toEqual({ ...parsed, scope: 'per-application' })
+  })
+})
+
+describe('POST .../questions/parse — the cover letter', () => {
+  const letter: Question = {
+    ...newCoverLetter('Tom Candidate', 'tom@x.test'),
+    draft: { text: 'Dear Dana Wu,\n\nI built a ledger.\n\nSincerely,\nTom Candidate', citations: [] },
+    status: 'drafted',
+  }
+
+  const withLetter = (): Question[] => [
+    {
+      q: 'Self-introduction',
+      constraints: { type: 'long-text', required: true },
+      askHuman: [],
+      status: 'pending',
+    },
+    {
+      q: 'Where are you based?',
+      constraints: { type: 'short-text', required: false },
+      askHuman: [],
+      status: 'pending',
+    },
+    letter,
+  ]
+
+  it('carries the letter through a replace, after the questions the form actually asks', async () => {
+    getApplication.mockResolvedValue(application({ questions: withLetter() }))
+
+    await POST(post({ text: 'Q1' }), ctx('app-1'))
+    const questions = patchOf().questions as Question[]
+    expect(questions).toHaveLength(3)
+    expect(questions.slice(0, 2).map((q) => q.q)).toEqual([
+      'Why do you want to work here?',
+      'Where are you based?',
+    ])
+    // By reference: the draft it already carries is not something a re-parse of the form gets to
+    // throw away, because the form never asked for it.
+    expect(questions[2]).toBe(letter)
+  })
+
+  it('leaves the letter where it was on an append', async () => {
+    getApplication.mockResolvedValue(application({ questions: withLetter() }))
+
+    await POST(post({ text: 'Q1', append: true }), ctx('app-1'))
+    const questions = patchOf().questions as Question[]
+    expect(questions).toHaveLength(5)
+    expect(questions[2]).toBe(letter)
   })
 })

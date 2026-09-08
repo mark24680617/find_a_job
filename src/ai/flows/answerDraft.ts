@@ -2,6 +2,7 @@ import { FlowOutputError, generateStructured, type GenerateCall, type Part } fro
 import { buildAnswerDraftPrompt, statedLimit, type AnswerDraftInput } from '@/ai/prompts/answerDraft'
 import { AnswerDraftOutSchema, type AnswerDraftOut } from '@/ai/schemas'
 import { countUnits } from '@/lib/countText'
+import { letterProblems } from '@/lib/letter/guard'
 
 /**
  * The most reasoning-heavy flow in the product, and the only one whose output a human signs
@@ -10,6 +11,13 @@ import { countUnits } from '@/lib/countText'
  * right size for that; nothing lighter would leave room for the choosing.
  */
 const THINKING_BUDGET = 1024
+
+/**
+ * A cover letter gets twice that. It is three times the length of a form answer, it has a shape
+ * to hold across three or four blocks, and it has to choose whether there is anything to bridge
+ * at all — none of which is reasoning the letter's rules can do for it.
+ */
+const LETTER_THINKING_BUDGET = 2048
 
 /**
  * What the schema cannot see. Genkit checks the SHAPE of the output — a citation is a string
@@ -50,6 +58,14 @@ function problemsWith(out: AnswerDraftOut, input: AnswerDraftInput): string[] {
       problems.push(`the citation names ${citation.factId}, which is not one of the facts provided`)
     }
   }
+  // A letter is checked for the two things a reader sees before they read a word — who it is
+  // addressed to, who signed it — and for the ceiling that keeps it to one page. The letterhead
+  // is what those are judged against, and a letter drafted before one was ever typed is judged
+  // against a blank one: "Dear Hiring Manager," and no signature is the correct letter then.
+  if (input.question.kind === 'cover-letter') {
+    problems.push(...letterProblems(out.text, input.letter ?? { name: '', recipient: '' }))
+  }
+
   // Two citations onto the same missing fact are one problem, said once — the list is read
   // by a model as instructions and by a person as an explanation, and both suffer repetition.
   return [...new Set(problems)]
@@ -103,7 +119,13 @@ export async function runAnswerDraft(
   const { system, parts } = buildAnswerDraftPrompt(input)
   const ask = (prompt: Part[]) =>
     generateStructured(
-      { parts: prompt, system, schema: AnswerDraftOutSchema, thinkingBudget: THINKING_BUDGET },
+      {
+        parts: prompt,
+        system,
+        schema: AnswerDraftOutSchema,
+        thinkingBudget:
+          input.question.kind === 'cover-letter' ? LETTER_THINKING_BUDGET : THINKING_BUDGET,
+      },
       generate,
     )
 

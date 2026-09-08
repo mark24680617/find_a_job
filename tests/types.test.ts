@@ -7,6 +7,8 @@ import type {
   GatePosture,
   InterviewRound,
   Profile,
+  Question,
+  QuestionKind,
   RoundType,
 } from '@/lib/types'
 
@@ -27,6 +29,21 @@ const ROUND_TYPES: RoundType[] = [
   'take-home',
   'other',
 ]
+const QUESTION_KINDS: QuestionKind[] = ['cover-letter']
+
+// Exhaustive over QuestionKind, for the same reason as AppStatus below: a second kind of
+// question would be a second thing the pane, the list and the routes have to branch on, and
+// this switch is where the compiler says so first.
+function kindLabel(kind: QuestionKind): string {
+  switch (kind) {
+    case 'cover-letter':
+      return 'Cover letter'
+    default: {
+      const unreachable: never = kind
+      return unreachable
+    }
+  }
+}
 
 // Exhaustive over AppStatus: adding a status without handling it here fails to compile.
 function statusLabel(status: AppStatus): string {
@@ -96,6 +113,27 @@ const application: Application = {
   status: 'applied',
   timeline: [{ event: 'created', at: '2026-08-27T00:00:00Z' }],
   createdAt: '2026-08-27T00:00:00Z',
+}
+
+// The cover letter is a question like any other, with two fields no form question carries: the
+// kind that tells every surface to treat it as a letter, and the letterhead that goes above it
+// on the page. It has no limit and is not required — a form's word limit is a fact the employer
+// stated, and no employer stated one for this.
+const coverLetter: Question = {
+  q: 'Cover letter',
+  kind: 'cover-letter',
+  constraints: { type: 'long-text', required: false },
+  askHuman: [],
+  status: 'pending',
+  letter: {
+    name: 'Tom Candidate',
+    email: 'tom@example.test',
+    phone: '555 0100',
+    location: 'Seattle, WA',
+    recipient: 'Dana Wu',
+    recipientTitle: 'Head of Engineering',
+    companyAddress: '1 Main St\nSeattle, WA',
+  },
 }
 
 const round: InterviewRound = {
@@ -204,6 +242,7 @@ describe('domain types', () => {
     expect(GATE_POSTURES).toHaveLength(3)
     expect(ARTIFACT_SCOPES).toHaveLength(3)
     expect(ROUND_TYPES).toHaveLength(8)
+    expect(QUESTION_KINDS.map(kindLabel)).toEqual(['Cover letter'])
   })
 
   it('narrows AppStatus exhaustively', () => {
@@ -221,6 +260,16 @@ describe('domain types', () => {
     expect(application.questions[0].draft?.citations[0].factId).toBe(profile.facts[0].id)
     // A file question carries no limit — countUnits is only reachable for text questions.
     expect(application.questions[1].constraints.limit).toBeUndefined()
+  })
+
+  it('builds a cover-letter question: a kind, a letterhead, and no limit', () => {
+    expect(coverLetter.kind).toBe('cover-letter')
+    expect(coverLetter.constraints.limit).toBeUndefined()
+    expect(coverLetter.letter?.recipientTitle).toBe('Head of Engineering')
+    // Several lines in one field: the address block prints a line per row.
+    expect(coverLetter.letter?.companyAddress.split('\n')).toHaveLength(2)
+    // Every other question stored today carries neither field, and none had to be migrated.
+    expect(application.questions.map((q) => q.kind)).toEqual([undefined, undefined])
   })
 
   it('counts a draft against its own limit', () => {

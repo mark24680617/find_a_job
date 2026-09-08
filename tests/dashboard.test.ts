@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 // module scope and throws outside a browser. Nothing under test touches it.
 vi.mock('@/lib/firebase/client', () => ({ auth: {} }))
 
+import { Dashboard } from '@/components/board/DashboardScreen'
 import {
   ageLabel,
   COLUMNS,
@@ -300,5 +301,20 @@ describe('UpcomingStrip render', () => {
     // button still matches it (WCAG 2.5.3 Label in Name).
     expect(markup).toContain('aria-label="Add to calendar: Nectir Recruiter screen"')
     expect(markup).toContain('aria-label="Add to calendar: TRM Labs Panel"')
+  })
+})
+
+/**
+ * The way to add an application is the board's one primary action, and it is on screen before
+ * anything has loaded — a static render runs no effects, so what this checks is the loading
+ * state, which is exactly the state a person arrives in.
+ */
+describe('Dashboard render', () => {
+  it('offers New application from the header, next to the heading', () => {
+    const markup = renderToStaticMarkup(createElement(Dashboard))
+    expect(markup).toContain('Applications')
+    expect(markup).toContain('href="/applications/new"')
+    expect(markup).toContain('class="btn btn-primary"')
+    expect(markup).toContain('New application')
   })
 })

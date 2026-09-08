@@ -4,6 +4,7 @@ import { FlowOutputError } from '@/ai/genkit'
 import type { AnswerDraftOut } from '@/ai/schemas'
 import { requireUser } from '@/lib/auth'
 import { getApplication, getProfile, setProfile, updateApplication } from '@/lib/db'
+import { isCoverLetter, needsStoryAsk, readLetterhead, STORY_ASK } from '@/lib/letter/letterhead'
 import { mergeStory } from '@/lib/profileMerge'
 import type { Application, AskHuman, ClarifyAnswer, Profile, Question } from '@/lib/types'
 
@@ -116,11 +117,18 @@ const isAnswered = (ask: AskHuman) => Boolean(ask.answer?.trim())
  * forms make — and this draft was written against the old limit and counted against the old
  * limit. Storing it under the new one would leave an over-limit draft that no guard ever
  * rejected and no error ever mentioned, which is the quietest way this product can be wrong.
+ *
+ * The kind is part of that identity now. A re-parse keeps the cover letter and carries it to the
+ * end of the list, so the slot it held can come back holding a form question — and `Cover letter`
+ * with no stated limit is a field real forms have, which matches on every other test here. A
+ * letter filed under it would put a salutation and a signature in a form answer, and the letter
+ * itself would show nothing.
  */
 function sameQuestion(before: Question, after: Question | undefined): boolean {
   return (
     after !== undefined &&
     after.q === before.q &&
+    after.kind === before.kind &&
     after.constraints.limit === before.constraints.limit &&
     after.constraints.unit === before.constraints.unit
   )
@@ -158,6 +166,19 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   // without it is drafting with a hard rule switched off, so it is refused rather than run.
   if (!before.parsed) {
     return Response.json({ error: 'interpret the posting before drafting' }, { status: 400 })
+  }
+  // The same spirit, for the one question that cannot be prompted at all without a company: the
+  // letter prompt refuses a blank `parsed.company`, because a letter to nobody is what makes the
+  // model invent an addressee. That refusal is thrown while the prompt is being built, so it is
+  // not one the flow's own FlowOutputError catch below converts — unguarded it would reach the
+  // pane as a 500 with nothing to show. `parsed.company` is what the interpretation returned and
+  // a pasted posting can leave it blank; `before.company` is a separate field the person may
+  // have corrected, and correcting the record does not tell the prompt who the letter is to.
+  if (isCoverLetter(asked) && !before.parsed.company.trim()) {
+    return Response.json(
+      { error: 'the posting names no company, so the letter has nobody to address' },
+      { status: 400 },
+    )
   }
 
   // The telling this draft runs against: what was just posted, or — when the client sent
@@ -205,6 +226,14 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   // generated against and the set that gets persisted.
   const positioning = mergeClarify(asked.clarifyAnswers ?? [], clarifyAnswers)
 
+  // A cover letter is addressed and signed from the letterhead, so the prompt needs three of its
+  // fields. They are read off the RECORD rather than off the body: the pane saved them before it
+  // asked for a draft, and a field the request could carry is a field the request could lie
+  // about — this is the letter's own salutation and its signature. The other four never come:
+  // the email, the phone and the location are typeset by the layout, and a posting that said
+  // "include your phone number" would otherwise land one in a document written to be sent.
+  const head = isCoverLetter(asked) ? readLetterhead(asked.letter) : null
+
   let out: AnswerDraftOut
   try {
     out = await runAnswerDraft({
@@ -223,6 +252,7 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
       // Blank is sent as nothing at all, so the prompt drops the section rather than heading
       // an empty one.
       story: story || undefined,
+      ...(head ? { letter: { name: head.name, recipient: head.recipient, recipientTitle: head.recipientTitle } } : {}),
     })
   } catch (error) {
     // The flow refused its own output: over the limit, or citing something that is not there.
@@ -234,6 +264,23 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     }
     throw error
   }
+
+  // The answered asks first — they are the human's, and they are why this draft says what it
+  // says — then whatever the new draft still cannot answer. An ask the model repeated despite
+  // being told the answer is dropped: two cards for one question, one of them already answered,
+  // is a queue that reads as broken.
+  //
+  // Composed from the PRE-call read plus this request's body, not from the fresh read: this is
+  // the queue the draft was actually generated against. An answer that landed in the window
+  // belongs to a draft this one never saw. Deliberate, and left as it is.
+  const asks = [...answered, ...out.askHuman.filter((a) => !answered.some((x) => x.question === a.question))]
+  // The story behind the lead example is the one thing a letter needs that the resume cannot
+  // supply, so it is asked for whenever the candidate has not told it. The prompt asks the model
+  // to ask (its rule 5), and across the smoke runs it sometimes did and sometimes did not — so
+  // the product asks, after whatever the model asked for itself. Answered, it is carried by the
+  // merge above and reaches the next draft as the human's own words, which is also why an ask
+  // already in the queue is not repeated here.
+  if (needsStoryAsk({ ...asked, story }, [...answered, ...out.askHuman])) asks.push(STORY_ASK)
 
   // Read again after it. The model call takes seconds and the record can move underneath it,
   // and Firestore's update() replaces `questions` whole — composing the write from the stale
@@ -260,15 +307,7 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     // back to it tomorrow — still has it. Cleared when the person emptied the box.
     story: story || undefined,
     draft: { text: out.text, citations: out.citations },
-    // The answered asks first — they are the human's, and they are why this draft says what
-    // it says — then whatever the new draft still cannot answer. An ask the model repeated
-    // despite being told the answer is dropped: two cards for one question, one of them
-    // already answered, is a queue that reads as broken.
-    //
-    // Composed from the PRE-call read plus this request's body, not from the fresh read: this
-    // is the queue the draft was actually generated against. An answer that landed in the
-    // window belongs to a draft this one never saw. Deliberate, and left as it is.
-    askHuman: [...answered, ...out.askHuman.filter((a) => !answered.some((x) => x.question === a.question))],
+    askHuman: asks,
     status: 'drafted',
   }
 

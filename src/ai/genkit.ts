@@ -48,7 +48,12 @@ export type GenerateCall = (
   options: GenerateOptions,
 ) => Promise<{ output: unknown; text?: string; custom?: unknown }>
 
-const callGenkit: GenerateCall = (options) => ai.generate(options)
+/**
+ * The one instance, exported only so a caller that needs to see how often the model was really
+ * reached — the smoke counts a draft's calls — wraps this rather than standing up a client of its
+ * own, which would quietly miss any plugin option added above.
+ */
+export const callGenkit: GenerateCall = (options) => ai.generate(options)
 
 const retryInstruction = (error: string) =>
   [

@@ -15,6 +15,12 @@ interface Props {
   onSelect: (index: number) => void
   /** Open the intake to read more questions onto the end of the list, without re-parsing. */
   onAddQuestion: () => void
+  /**
+   * Append the cover letter to the list. Passed only while there is no letter yet — one per
+   * application, decided where the list is — so the button is simply absent once there is one,
+   * rather than present and refusing.
+   */
+  onWriteLetter?: () => void
 }
 
 const STATUS: Record<Question['status'], { label: string; dot: string }> = {
@@ -31,7 +37,7 @@ function constraintChip(q: Question): string | null {
   return null
 }
 
-export function QuestionList({ questions, selected, onSelect, onAddQuestion }: Props) {
+export function QuestionList({ questions, selected, onSelect, onAddQuestion, onWriteLetter }: Props) {
   return (
     <nav aria-label="Questions" className="self-start border border-line bg-surface">
       <h2 className="flex items-baseline justify-between border-b border-line px-4 py-3">
@@ -75,10 +81,18 @@ export function QuestionList({ questions, selected, onSelect, onAddQuestion }: P
           )
         })}
       </ul>
-      <div className="border-t border-line px-4 py-3">
+      {/* Both quiet links, on one row: adding a question is reading more of the form, and
+          writing the letter is adding the one question no form asked for. Neither is the loud
+          thing to do on this screen — answering what is already listed is. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-4 py-3">
         <button type="button" className="btn-link text-sm" onClick={onAddQuestion}>
           Add a question
         </button>
+        {onWriteLetter && (
+          <button type="button" className="btn-link text-sm" onClick={onWriteLetter}>
+            Write a cover letter
+          </button>
+        )}
       </div>
     </nav>
   )

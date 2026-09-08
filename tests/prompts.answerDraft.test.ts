@@ -144,6 +144,13 @@ describe('buildAnswerDraftPrompt system text', () => {
       system(),
     )
   })
+
+  it('still answers a form question with this text, now that a cover letter takes another', () => {
+    // The kind is the only thing that sends a draft to the letter's SYSTEM. A question without
+    // one — every question stored today — is a form question and reads these rules.
+    expect(system()).toContain(VERBATIM)
+    expect(system()).not.toContain('You draft one cover letter')
+  })
 })
 
 describe('buildAnswerDraftPrompt parts', () => {

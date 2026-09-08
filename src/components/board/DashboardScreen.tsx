@@ -46,7 +46,7 @@ async function fetchUpcoming(list: Application[]): Promise<UpcomingRound[]> {
   return upcomingRounds(perApp.flat())
 }
 
-function Dashboard() {
+export function Dashboard() {
   const [apps, setApps] = useState<Application[] | null>(null)
   const [upcoming, setUpcoming] = useState<UpcomingRound[]>([])
   const [loadError, setLoadError] = useState('')
@@ -120,9 +120,17 @@ function Dashboard() {
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-6 pt-10 pb-16">
-      <h1 className="font-display text-[2rem] leading-tight tracking-tight text-ink">
-        Applications
-      </h1>
+      {/* The one primary action on the board, in the header rather than inside any one state:
+          adding an application is what a person came here to do, and on a slow load or a failed
+          one the way to do it should already be on screen. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <h1 className="font-display text-[2rem] leading-tight tracking-tight text-ink">
+          Applications
+        </h1>
+        <Link href="/applications/new" className="btn btn-primary">
+          New application
+        </Link>
+      </div>
 
       {loadError && (
         <p role="alert" className="mt-6 text-[0.9375rem] text-danger">
@@ -143,12 +151,10 @@ function Dashboard() {
             text of one, when the site won’t hand it over.
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-3">
-            <Link href="/applications/new" className="btn btn-primary">
-              New application
-            </Link>
             {/* Quiet, and second: it fills this account with an invented candidate and one
                 worked application, which is the fastest way to see what the product does and
-                the wrong way to start using it. */}
+                the wrong way to start using it. The way to start a real one is the header's
+                New application, said there once rather than twice on the same screen. */}
             <button
               type="button"
               className="btn btn-quiet"

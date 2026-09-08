@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Application, AskHuman, ClarifyAnswer, Fact, ParsedJob, Profile, Question } from '@/lib/types'
 import type { AnswerDraftOut, ProfileIngestOut } from '@/ai/schemas'
 import { FlowOutputError } from '@/ai/genkit'
+import { LETTER_Q, newCoverLetter, STORY_ASK } from '@/lib/letter/letterhead'
 import type { AnswerDraftInput } from '@/ai/prompts/answerDraft'
 
 // The handler with everything behind it faked: no Admin SDK, no model call. What is under
@@ -175,6 +176,28 @@ describe('POST .../questions/[idx]/draft — what it accepts', () => {
     expect(runAnswerDraft).not.toHaveBeenCalled()
   })
 
+  it('400s a cover letter on a posting that named no company, rather than failing inside the prompt', async () => {
+    // `parsed.company` is whatever the interpretation returned, and a pasted posting that never
+    // names the company leaves it blank — the company the person corrected on the record is a
+    // different field. The letter prompt refuses a blank one outright, and it does so while the
+    // prompt is being built, which is not a refusal the flow's own catch converts: without this
+    // guard it reaches the pane as a 500 with no message to show. A form question on the same
+    // application is unaffected, which is exactly why this is checked here and not at the top.
+    const letter = newCoverLetter('Tom Candidate', 'tom@x.test')
+    getApplication.mockResolvedValue(
+      application({ parsed: { ...parsed, company: '  ' }, questions: [letter, other] }),
+    )
+
+    const res = await POST(post(), ctx('app-1', '0'))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({
+      error: 'the posting names no company, so the letter has nobody to address',
+    })
+    expect(runAnswerDraft).not.toHaveBeenCalled()
+
+    expect((await POST(post(), ctx('app-1', '1'))).status).toBe(200)
+  })
+
   it('400s a humanAnswers body that is not a list of answers', async () => {
     const bad: unknown[] = [
       { humanAnswers: 'Portland' },
@@ -289,6 +312,32 @@ describe('POST .../questions/[idx]/draft — what the flow is given', () => {
     await POST(post({ humanAnswers: [{ question: 'Something else entirely', answer: 'Sure.' }] }), ctx('app-1', '0'))
     expect(flowInput().humanAnswers).toEqual([])
   })
+
+  it('hands a cover letter the three letterhead fields the prompt needs, normalised', async () => {
+    // Three, and not the other four: the email, the phone and the location are typeset by the
+    // layout and never enter a context window. Read off the record and normalised on the way,
+    // so a title stored with a leading space addresses the letter as the person typed it.
+    const letter = newCoverLetter('Tom Candidate', 'tom@x.test')
+    getApplication.mockResolvedValue(
+      application({
+        questions: [
+          { ...letter, letter: { ...letter.letter!, recipient: 'Dana Wu', recipientTitle: ' Head of Engineering', phone: '555' } },
+        ],
+      }),
+    )
+
+    await POST(post(), ctx('app-1', '0'))
+    expect(flowInput().letter).toEqual({
+      name: 'Tom Candidate',
+      recipient: 'Dana Wu',
+      recipientTitle: 'Head of Engineering',
+    })
+  })
+
+  it('sends no letterhead at all for a form question', async () => {
+    await POST(post(), ctx('app-1', '0'))
+    expect(flowInput()).not.toHaveProperty('letter')
+  })
 })
 
 describe('POST .../questions/[idx]/draft — what it writes', () => {
@@ -384,6 +433,92 @@ describe('POST .../questions/[idx]/draft — what it writes', () => {
   })
 })
 
+describe('POST .../questions/[idx]/draft — the story ask', () => {
+  // The prompt tells the model to ask what happened in the lead example when nothing told it,
+  // and across forty-six smoke runs it sometimes did and sometimes did not. The ask is the one
+  // thing the letter needs that the resume cannot supply, so the route appends it.
+  const letterApp = (over: Partial<Question> = {}) =>
+    application({ questions: [{ ...newCoverLetter('Tom Candidate', 'tom@x.test'), ...over }, other] })
+
+  it('appends it after the model’s own asks when a letter has no telling', async () => {
+    getApplication.mockResolvedValue(letterApp())
+
+    await POST(post(), ctx('app-1', '0'))
+    expect(written().askHuman).toEqual([...out.askHuman, STORY_ASK])
+  })
+
+  it('leaves it off once the candidate has told the story', async () => {
+    getApplication.mockResolvedValue(letterApp({ story: STORY }))
+
+    await POST(post(), ctx('app-1', '0'))
+    expect(written().askHuman).toEqual(out.askHuman)
+  })
+
+  it('re-asks an unanswered one exactly once, and never twice', async () => {
+    // The commonest re-draft there is: the ask went out with the last draft, the person came
+    // back without answering it, and the story box is still blank. One copy comes back — but
+    // only because an unanswered ask is dropped from `asks` before `needsStoryAsk` is consulted,
+    // which is a fact about the queue's composition rather than about the ask, and a change to
+    // that composition would put two cards on the pane with every test here still passing.
+    getApplication.mockResolvedValue(letterApp({ askHuman: [STORY_ASK], status: 'drafted' }))
+
+    await POST(post(), ctx('app-1', '0'))
+    expect(written().askHuman).toEqual([...out.askHuman, STORY_ASK])
+  })
+
+  it('asks it once when the model asked it too', async () => {
+    getApplication.mockResolvedValue(letterApp())
+    runAnswerDraft.mockResolvedValue({ ...out, askHuman: [STORY_ASK] })
+
+    await POST(post(), ctx('app-1', '0'))
+    expect(written().askHuman).toEqual([STORY_ASK])
+  })
+
+  it('leaves it off when the model asked for the story in its own words', async () => {
+    // Five of seven no-telling smoke runs asked in wording of their own. Appending the product's
+    // copy beside one of those is two cards for one question.
+    getApplication.mockResolvedValue(letterApp())
+    const own: AskHuman = {
+      question: 'What specific incident or failure prompted the ledger batching project, and what were the broader architectural consequences?',
+      why: 'The narrative needs the story behind your lead achievement.',
+    }
+    runAnswerDraft.mockResolvedValue({ ...out, askHuman: [own] })
+
+    await POST(post(), ctx('app-1', '0'))
+    expect(written().askHuman).toEqual([own])
+  })
+
+  it('still leaves it off once that ask has been answered', async () => {
+    // The answer does not fill the story box, so `story` is blank on the re-draft and only the
+    // answered ask stands between the person and a second copy of the question.
+    const own: AskHuman = {
+      question: 'What specific incident or failure prompted the ledger batching project, and what were the broader architectural consequences?',
+      why: 'The narrative needs the story behind your lead achievement.',
+    }
+    getApplication.mockResolvedValue(letterApp({ askHuman: [own], status: 'drafted' }))
+
+    const answer = 'A weekend of double-charges, so we batched the ledger writes.'
+    await POST(post({ humanAnswers: [{ question: own.question, answer }] }), ctx('app-1', '0'))
+    expect(written().askHuman).toEqual([{ ...own, answer }, ...out.askHuman])
+  })
+
+  it('never appends it to a form question', async () => {
+    await POST(post(), ctx('app-1', '0'))
+    expect(written().askHuman).toEqual(out.askHuman)
+  })
+
+  it('keeps the human’s answer to it through a re-draft, and does not ask again', async () => {
+    // The answered ask is in `answered`, so it is carried by the merge and reaches the next
+    // draft through humanAnswersPart — and the question it answers is not asked a second time.
+    getApplication.mockResolvedValue(letterApp({ askHuman: [STORY_ASK], status: 'drafted' }))
+
+    const answer = 'We batched the ledger writes over a weekend and the p99 halved.'
+    await POST(post({ humanAnswers: [{ question: STORY_ASK.question, answer }] }), ctx('app-1', '0'))
+    expect(flowInput().humanAnswers).toEqual([{ ...STORY_ASK, answer }])
+    expect(written().askHuman).toEqual([{ ...STORY_ASK, answer }, ...out.askHuman])
+  })
+})
+
 describe('POST .../questions/[idx]/draft — when the flow refuses its own output', () => {
   it('422s with the flow’s own message, so the person is told what went wrong', async () => {
     // The message names the count, the limit and the offending span, and it is the only
@@ -453,6 +588,23 @@ describe('POST .../questions/[idx]/draft — when the record moves underneath', 
       .mockResolvedValueOnce(application({ questions: [asChars, other] }))
 
     expect((await POST(post(), ctx('app-1', '0'))).status).toBe(409)
+    expect(updateApplication).not.toHaveBeenCalled()
+  })
+
+  it('409s when the slot now holds a form question that merely reads like the letter', async () => {
+    // A re-parse keeps the cover letter and moves it to the end of the list, so the index the
+    // letter had can come back holding a form question — and `Cover letter` with no stated
+    // limit is a field real forms have. The wording and both constraints match, so the kind is
+    // the only thing that tells the two apart; without it the letter's draft, its salutation
+    // and its signature would be filed under a form question, and the letter would show nothing.
+    const letter = newCoverLetter('Tom Candidate', 'tom@x.test')
+    const asked = question({ q: LETTER_Q, constraints: { type: 'long-text', required: false } })
+    getApplication
+      .mockResolvedValueOnce(application({ questions: [letter] }))
+      .mockResolvedValueOnce(application({ questions: [asked] }))
+
+    const res = await POST(post(), ctx('app-1', '0'))
+    expect(res.status).toBe(409)
     expect(updateApplication).not.toHaveBeenCalled()
   })
 

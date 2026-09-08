@@ -10,7 +10,9 @@ the positioning calls to you: which half of your background should lead, whether
 gets named. It reads the posting's hard requirements against your profile and says plainly when
 one is a firm no, so you can decide whether to apply at all before writing four answers. And it
 learns your voice from your edits — each time you rewrite one of its sentences, the rule you were
-applying is distilled and kept.
+applying is distilled and kept. A cover letter is one of those questions: drafted the same cited
+way, with a letterhead above it and one button that sets the letter you saved on a US-Letter page
+as a PDF.
 
 **Live:** <https://find-a-job-572064776552.us-west1.run.app>
 
@@ -64,7 +66,7 @@ login` is what gives the server side its Firestore credentials locally; on Cloud
 code picks up the runtime service account instead.
 
 ```sh
-npm test          # 1340 tests
+npm test          # 1475 tests
 npm run build     # production build, typecheck included
 ```
 
@@ -155,6 +157,10 @@ TypeScript · Tailwind
 - **Interview prep, beyond the first brief.** Paste the scheduling email and you get a typed
   round and a prep brief for it today. Still to come: reading a *screenshot* of the notice, a
   mock interview you can talk to, and a page per round rather than a card on the application.
+- **The cover letter, past the first draft.** A letter is set up, drafted with every claim cited,
+  adjusted and exported as a PDF today. Still to come: a letterhead the profile remembers, so a
+  phone number is typed once rather than once per application; UK conventions, since the copy is
+  en-US throughout; and a plain-text variant for the forms that want the letter pasted.
 - **An AWS port**, to check that nothing here is load-bearing on one cloud.
 
 ## Built for

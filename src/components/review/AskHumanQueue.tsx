@@ -21,13 +21,21 @@ import type { AskHuman } from '@/lib/types'
 interface Props {
   asks: AskHuman[]
   busy: boolean
+  /**
+   * Why the parent is holding the re-draft back, when it is — shown beside the button, which
+   * cannot be pressed while it stands. Answering and re-drafting is a draft like any other, so
+   * whatever holds a draft back holds this back too. Kept apart from `busy`: busy relabels the
+   * button and closes the inputs, and being held does neither, because what is typed here is
+   * still worth typing and is kept either way.
+   */
+  held?: string
   onSubmit: (answers: { question: string; answer: string }[]) => void
 }
 
-export function AskHumanQueue({ asks, busy, onSubmit }: Props) {
+export function AskHumanQueue({ asks, busy, held, onSubmit }: Props) {
   const [answers, setAnswers] = useState<string[]>(() => asks.map((a) => a.answer ?? ''))
 
-  const canSubmit = !busy && answers.some((a) => a.trim() !== '')
+  const canSubmit = !busy && held === undefined && answers.some((a) => a.trim() !== '')
 
   function submit() {
     const filled = asks
@@ -86,8 +94,8 @@ export function AskHumanQueue({ asks, busy, onSubmit }: Props) {
           <button type="button" className="btn btn-primary" disabled={!canSubmit} onClick={submit}>
             {busy ? 'Re-drafting…' : 'Answer & re-draft'}
           </button>
-          <p className="text-sm text-ink-3">
-            Your answers are kept and folded into the next draft.
+          <p className="max-w-[52ch] text-sm text-ink-3">
+            {held ?? 'Your answers are kept and folded into the next draft.'}
           </p>
         </div>
       </fieldset>
