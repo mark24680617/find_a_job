@@ -577,6 +577,43 @@ export function ReviewPane({
   const openAsks = question.askHuman.length > 0
   const activeFact = active ? factsById.get(active.factId) : undefined
 
+  // The export belongs with the letter it would print, so it rides in the draft's control row
+  // beside Re-draft — and drops back to the final section's row when there is no draft row to
+  // sit in: a letter typed by hand, one never drafted, and one whose positioning panel is
+  // reopened over the draft. Computed once and rendered in one of the two, so the control is in
+  // exactly one place at any moment rather than in two branches that could disagree.
+  const exportInDraftRow = letter && question.draft !== undefined && !panelOpen
+  const exportControls = letter && (
+    <>
+      {/* The export is the saved letter and the saved letterhead, so it waits for both to be
+          saved — an unsaved edit is simply not what would come back. */}
+      <button
+        type="button"
+        className="btn btn-quiet"
+        disabled={exporting || question.final === undefined || dirty || letterDirty}
+        onClick={() => void exportPdf()}
+      >
+        {exporting ? 'Preparing…' : 'Download PDF'}
+      </button>
+      {(question.final === undefined || dirty || letterDirty) && (
+        <p className="text-sm text-ink-3">Save the letter to export it.</p>
+      )}
+    </>
+  )
+  // The export's own two lines, under whichever row holds the button and kept apart from the
+  // save's and the copy's: a PDF that could not be set says nothing about whether the letter
+  // is stored.
+  const exportLines = letter && (
+    <>
+      {exportError && (
+        <p role="alert" className="mt-2 max-w-[62ch] text-sm text-danger">
+          {exportError}
+        </p>
+      )}
+      {exportNote && <p className="mt-2 text-sm text-accent">{exportNote}</p>}
+    </>
+  )
+
   return (
     <section aria-labelledby="answer-heading" className="min-w-0">
       <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
@@ -731,12 +768,14 @@ export function ReviewPane({
                 >
                   {drafting ? 'Drafting…' : 'Re-draft'}
                 </button>
+                {exportControls}
                 <p className="max-w-[52ch] text-sm text-ink-3">
                   {question.draft.citations.length > 0
                     ? 'Underlined phrases are cited — select one to see the fact behind it.'
                     : 'Nothing in this draft needed a citation.'}
                 </p>
               </div>
+              {exportLines}
 
               {/* Positioning re-entry: reopen the round already answered, or set up for the
                   first time on a draft that skipped it. Asking a different round is a discard,
@@ -1058,21 +1097,7 @@ export function ReviewPane({
           >
             {copied ? 'Copied' : 'Copy'}
           </button>
-          {/* The export is the saved letter and the saved letterhead, so it waits for both to be
-              saved — an unsaved edit is simply not what would come back. */}
-          {letter && (
-            <button
-              type="button"
-              className="btn btn-quiet"
-              disabled={exporting || question.final === undefined || dirty || letterDirty}
-              onClick={() => void exportPdf()}
-            >
-              {exporting ? 'Preparing…' : 'Download PDF'}
-            </button>
-          )}
-          {letter && (question.final === undefined || dirty || letterDirty) && (
-            <p className="text-sm text-ink-3">Save the letter to export it.</p>
-          )}
+          {!exportInDraftRow && exportControls}
           {copyError && (
             <p role="alert" className="max-w-[52ch] text-sm text-danger">
               {copyError}
@@ -1094,14 +1119,7 @@ export function ReviewPane({
                   : 'Nothing unsaved')}
           </p>
         </div>
-        {/* The export's own two lines, kept apart from the save's and the copy's: a PDF that
-            could not be set says nothing about whether the letter is stored. */}
-        {exportError && (
-          <p role="alert" className="mt-2 max-w-[62ch] text-sm text-danger">
-            {exportError}
-          </p>
-        )}
-        {exportNote && <p className="mt-2 text-sm text-accent">{exportNote}</p>}
+        {!exportInDraftRow && exportLines}
       </section>
     </section>
   )

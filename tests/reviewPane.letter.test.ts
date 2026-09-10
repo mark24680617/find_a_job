@@ -28,6 +28,20 @@ const formQuestion = (): Question => ({
   status: 'pending',
 })
 
+// A drafted letter: the control row under the draft is the row the export now sits in, so
+// every placement claim below needs a draft on the question to have a row at all.
+const draftedLetter = (over: Partial<Question> = {}): Question =>
+  letterQuestion({
+    draft: { text: 'Dear Dana Wu,\n\nI built the ledger.', citations: [] },
+    status: 'drafted',
+    ...over,
+  })
+
+// Everything from the final section's heading down. The export is in exactly one of the two
+// rows at a time, so each placement is read as a pair: present in one slice, absent from the other.
+const finalSection = (markup: string) => markup.slice(markup.indexOf('id="final-heading"'))
+const aboveFinal = (markup: string) => markup.slice(0, markup.indexOf('id="final-heading"'))
+
 const application = (q: Question): Application => ({
   id: 'app-1',
   company: 'Marram Systems',
@@ -143,6 +157,45 @@ describe('ReviewPane — a cover letter', () => {
     )
   })
 
+  it('puts the export in the draft’s control row, beside the re-draft', () => {
+    const markup = html(
+      draftedLetter({ final: 'Dear Dana Wu,\n\nI built the ledger.', status: 'final' }),
+    )
+    const redraft = markup.indexOf('>Re-draft</button>')
+    const download = markup.indexOf('Download PDF')
+    const citations = markup.indexOf('Nothing in this draft needed a citation.')
+    expect(redraft).toBeGreaterThan(-1)
+    expect(download).toBeGreaterThan(redraft)
+    expect(download).toBeLessThan(citations)
+    expect(markup).toContain('<button type="button" class="btn btn-quiet">Download PDF</button>')
+    // One place at a time: the row it left says nothing about exporting.
+    expect(finalSection(markup)).not.toContain('Download PDF')
+  })
+
+  it('keeps the export in the final section while there is no draft to sit with', () => {
+    const markup = html(
+      letterQuestion({ final: 'Dear Dana Wu,\n\nI built the ledger.', status: 'final' }),
+    )
+    expect(finalSection(markup)).toContain('Download PDF')
+    expect(aboveFinal(markup)).not.toContain('Download PDF')
+  })
+
+  it('keeps the save-first line beside the button, in whichever row holds it', () => {
+    const markup = html(draftedLetter())
+    const above = aboveFinal(markup)
+    expect(above).toContain(
+      '<button type="button" class="btn btn-quiet" disabled="">Download PDF</button>',
+    )
+    expect(above).toContain('Save the letter to export it.')
+    expect(above.indexOf('Save the letter to export it.')).toBeGreaterThan(
+      above.indexOf('Download PDF'),
+    )
+    expect(above.indexOf('Save the letter to export it.')).toBeLessThan(
+      above.indexOf('Nothing in this draft needed a citation.'),
+    )
+    expect(finalSection(markup)).not.toContain('Save the letter to export it.')
+  })
+
   it('calls a letter past the ceiling what it is', () => {
     const markup = html(letterQuestion({ final: `Dear Dana Wu, ${'word '.repeat(404)}`, status: 'final' }))
     expect(markup).toContain('>407 words</p>')
@@ -164,5 +217,18 @@ describe('ReviewPane — a form question is untouched by any of it', () => {
     expect(markup).not.toContain('Download PDF')
     expect(markup).not.toContain('Cover letter')
     expect(markup).toContain('Tell the story behind this answer')
+  })
+
+  // The export moved into the draft's control row, which every question has — so the row a form
+  // answer draws is the one place this could have leaked into.
+  it('grows no export in the row under its own draft', () => {
+    const markup = html({
+      ...formQuestion(),
+      draft: { text: 'I built the ledger.', citations: [] },
+      status: 'drafted',
+    })
+    expect(markup).toContain('Re-draft')
+    expect(markup).not.toContain('Download PDF')
+    expect(markup).not.toContain('Save the letter to export it.')
   })
 })
