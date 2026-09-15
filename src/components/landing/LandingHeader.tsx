@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { Wordmark } from '@/components/Wordmark'
 
 /**
  * The landing's own header — the shell's is for a signed-in person and does not render here.
@@ -19,7 +20,9 @@ export function LandingHeader() {
   return (
     <header className="sticky top-0 z-10 border-b border-line bg-surface">
       <div className="mx-auto flex max-w-6xl items-center gap-x-8 px-6 py-3.5">
-        <span className="font-display text-base font-medium tracking-tight text-ink">Find a Job</span>
+        <span className="font-display text-base font-medium tracking-tight text-ink">
+          <Wordmark />
+        </span>
         <nav aria-label="Sections" className="hidden items-center gap-6 text-sm sm:flex">
           {ANCHORS.map(({ href, label }) => (
             <a key={href} href={href} className="text-ink-2 hover:text-ink">

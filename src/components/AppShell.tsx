@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { SignInGate } from '@/components/SignInGate'
+import { Wordmark } from '@/components/Wordmark'
 import { readAdminClaim, signOutUser, watchUser } from '@/lib/firebase/client'
 import { firstPaint } from '@/lib/landing/firstPaint'
 
@@ -136,7 +137,7 @@ export function AppShell({ children, signedOut, returning = false }: Props) {
                 if (!mayLeave()) e.preventDefault()
               }}
             >
-              Find a Job
+              <Wordmark />
             </Link>
 
             <nav aria-label="Main" className="flex items-center gap-6 text-sm">
