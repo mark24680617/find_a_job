@@ -99,7 +99,7 @@ const formQuestion: Question = {
 }
 
 const input = (over: Partial<AnswerDraftInput> = {}): AnswerDraftInput => ({
-  question: newCoverLetter('Tom Candidate', 'tom@x.test'), parsed, jdText: 'Own the ledger.', facts, standardAnswers: {}, voiceRules: [], humanAnswers: [], clarifyAnswers: [],
+  question: newCoverLetter('Tom Candidate', 'tom@x.test'), parsed, jdText: 'Own the ledger.', today: '2026-09-14', facts, standardAnswers: {}, voiceRules: [], humanAnswers: [], clarifyAnswers: [],
   letter: { name: 'Tom Candidate', recipient: 'Dana Wu', recipientTitle: 'Head of Engineering' }, ...over,
 })
 
@@ -155,7 +155,7 @@ describe('buildCoverLetterPrompt parts', () => {
     expect(first.text).toContain('Signed: no name given')
   })
 
-  it('then the posting, the parsed job, the facts, and whatever the candidate settled, in that order', () => {
+  it('then the posting, the parsed job, today’s date, the facts, and whatever the candidate settled, in that order', () => {
     const parts = buildCoverLetterPrompt(
       input({
         story: 'The billing job kept double-charging.',
@@ -169,6 +169,7 @@ describe('buildCoverLetterPrompt parts', () => {
       'The letter: for the Senior Backend Engineer role at Marram Systems.',
       'The job posting:',
       'Parsed job:',
+      `Today's date: 2026-09-14. It is not a fact about the candidate. If you work out how long something still running has lasted (a role "since March 2024"), measure it up to this date. If you add up experience, add only the dated spans the facts give, never the gaps between them.`,
       'Candidate facts (cite these by id):',
       "The candidate's own telling (use its specifics, keep its truth, raise its craft):",
       "The candidate's positioning choices:",
@@ -191,6 +192,14 @@ describe('buildCoverLetterPrompt parts', () => {
     // otherwise land it in a document written to be sent.
     const all = buildCoverLetterPrompt(input()).parts.map((p) => ('text' in p ? p.text : '')).join('\n')
     expect(all).not.toContain('tom@x.test')
+  })
+
+  it('carries the date it was given, and only that one', () => {
+    // The letter measures a running tenure as the answer does, from the same input.
+    const all = buildCoverLetterPrompt(input({ today: '2031-02-03' })).parts.map((p) => ('text' in p ? p.text : '')).join('\n')
+    expect(all).toContain("Today's date: 2031-02-03.")
+    expect(all).not.toContain('2026-09-14')
+    expect(buildCoverLetterPrompt(input({ today: '2031-02-03' })).system).toBe(VERBATIM)
   })
 
   it('sends text only — there is nothing here for the model to look at', () => {

@@ -10,7 +10,7 @@ import { AssignmentTranscribeOutSchema } from '@/ai/schemas'
 // A transcription is the one model call in this feature allowed to be dull: it copies a
 // document out of a PDF and does nothing else. What is worth pinning is that it is told to
 // copy (the system text is the only place that is said), that it is handed the file rather
-// than a description of it, that it spends nothing on thinking about it, and that a PDF which
+// than a description of it, that it thinks at LOW about it, and that a PDF which
 // came back empty is a failure with a reason rather than a brief made of nothing.
 
 // The spec's system text, reproduced so that a well-meaning paraphrase of the prompt is a test
@@ -25,7 +25,7 @@ interface SentRequest {
   system?: string
   prompt: unknown[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
 }
 
 const returning = (text: string) => vi.fn<GenerateCall>(() => Promise.resolve({ output: { text } }))
@@ -51,12 +51,12 @@ describe('runAssignmentTranscribe', () => {
     expect(req.system).toBe(TRANSCRIBE_SYSTEM)
   })
 
-  it('spends no thinking tokens — copying a document out is not a judgment', async () => {
+  it('thinks at LOW, at temperature 0, against the transcript schema', async () => {
     const generate = returning('The assignment.')
     await runAssignmentTranscribe({ pdfBase64 }, generate)
 
     const req = generate.mock.calls[0][0] as unknown as SentRequest
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 0 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'LOW' } })
     expect(req.output).toEqual({ schema: AssignmentTranscribeOutSchema })
   })
 

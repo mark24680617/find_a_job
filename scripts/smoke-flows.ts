@@ -40,6 +40,7 @@ import { runMockDebrief } from '../src/ai/flows/mockDebrief'
 import { runAssignmentTranscribe } from '../src/ai/flows/assignmentTranscribe'
 import { runLetterheadFill } from '../src/ai/flows/letterheadFill'
 import { describeStage } from '../src/ai/prompts/mockTurn'
+import { utcToday } from '../src/lib/dates'
 import { mergeStory } from '../src/lib/profileMerge'
 import { researchProcess, type GatherTrace } from '../src/lib/research/pipeline'
 import { researchTakeHome } from '../src/lib/research/takeHome'
@@ -354,6 +355,7 @@ async function smokeAnswerDraft(): Promise<void> {
     question: MARRAM_QUESTION,
     parsed: MARRAM,
     jdText: MARRAM_JD,
+    today: utcToday(),
     facts: TOM_FACTS,
     standardAnswers: TOM_STANDARD_ANSWERS,
     voiceRules: TOM_VOICE_RULES,
@@ -434,7 +436,7 @@ async function smokeJobInterpret(): Promise<void> {
   const board: unknown = JSON.parse(readFileSync(ASHBY_FIXTURE, 'utf8'))
   const { jdText } = parseAshby(board, ASHBY_JOB_ID)
   console.log(`jobInterpret: recorded Ashby posting (${jdText.length} chars) x ${TOM_FACTS.length} facts`)
-  reportJob(await runJobInterpret({ jdText, facts: TOM_FACTS }))
+  reportJob(await runJobInterpret({ jdText, today: utcToday(), facts: TOM_FACTS }))
 }
 
 // ---- clarifyDraft: the depth fix -----------------------------------------------------
@@ -543,6 +545,7 @@ async function smokeClarifyDraft(): Promise<void> {
   const clarify = await runClarifyDraft({
     question: COVER_LETTER_QUESTION,
     jdText: FOUNDING_ENGINEER_JD,
+    today: utcToday(),
     facts: MARK_FACTS,
     standardAnswers: MARK_STANDARD_ANSWERS,
     clarifyAnswers: [],
@@ -554,6 +557,7 @@ async function smokeClarifyDraft(): Promise<void> {
       question: COVER_LETTER_QUESTION,
       parsed: FOUNDING_ENGINEER,
       jdText: FOUNDING_ENGINEER_JD,
+      today: utcToday(),
       facts: MARK_FACTS,
       standardAnswers: MARK_STANDARD_ANSWERS,
       voiceRules: MARK_VOICE_RULES,
@@ -606,6 +610,7 @@ async function smokeStory(): Promise<void> {
       question: STORY_QUESTION,
       parsed: FOUNDING_ENGINEER,
       jdText: FOUNDING_ENGINEER_JD,
+      today: utcToday(),
       facts,
       standardAnswers: stored.standardAnswers,
       voiceRules: MARK_VOICE_RULES,
@@ -1547,6 +1552,7 @@ async function smokeCoverLetter(withStory: boolean): Promise<void> {
   const clarify = await runClarifyDraft({
     question: TOM_LETTER,
     jdText: MARRAM_JD,
+    today: utcToday(),
     facts: TOM_FACTS,
     standardAnswers: TOM_STANDARD_ANSWERS,
     clarifyAnswers: [],
@@ -1564,6 +1570,7 @@ async function smokeCoverLetter(withStory: boolean): Promise<void> {
       question: TOM_LETTER,
       parsed: MARRAM,
       jdText: MARRAM_JD,
+      today: utcToday(),
       facts: TOM_FACTS,
       standardAnswers: TOM_STANDARD_ANSWERS,
       voiceRules: TOM_VOICE_RULES,

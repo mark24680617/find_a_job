@@ -1,13 +1,14 @@
-import { FlowOutputError, generateStructured, type GenerateCall, type Part } from '@/ai/genkit'
+import { FlowOutputError, generateStructured, type GenerateCall, type Part, type ThinkingLevel } from '@/ai/genkit'
 import { buildReconcileFactsPrompt, type ReconcileFactsInput } from '@/ai/prompts/reconcileFacts'
 import { ReconcileOutSchema, type ReconcileOut } from '@/ai/schemas'
 
 /**
- * Reasoning-heavy for the same reason clarifyDraft is: the model has to hold two sets of claims
- * side by side and decide, claim by claim, whether they are the same thing said twice. 1024 is
- * the budget that leaves room for that comparison; the extraction it reads was itself worth 512.
+ * The model has to hold two sets of claims side by side and decide, claim by claim, whether they
+ * are the same thing said twice. It is at MEDIUM because, on the one input tested, no thinking
+ * placed an unplaced fact "at Northwind" in 2 of 3 runs and MEDIUM in 0 of 2 (docs/notes/deps.md,
+ * "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 1024
+const THINKING_LEVEL: ThinkingLevel = 'MEDIUM'
 
 /**
  * What the schema cannot see — the same two relationships clarifyDraft checks, for the same two
@@ -85,7 +86,7 @@ export async function runReconcileFacts(
   const { system, parts } = buildReconcileFactsPrompt(input)
   const ask = (prompt: Part[]) =>
     generateStructured(
-      { parts: prompt, system, schema: ReconcileOutSchema, thinkingBudget: THINKING_BUDGET },
+      { parts: prompt, system, schema: ReconcileOutSchema, thinkingLevel: THINKING_LEVEL },
       generate,
     )
 

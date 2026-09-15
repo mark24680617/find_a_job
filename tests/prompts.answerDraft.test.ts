@@ -55,6 +55,7 @@ const input = (over: Partial<Parameters<typeof buildAnswerDraftPrompt>[0]> = {})
   question: question(),
   parsed,
   jdText: 'Own the ledger and settlement services. Go and PostgreSQL, moving to event-driven ingest.',
+  today: '2026-09-14',
   facts,
   standardAnswers: {},
   voiceRules: [],
@@ -333,6 +334,26 @@ describe('buildAnswerDraftPrompt parts', () => {
     // flattened from. Read apart, rule 9 has nothing to weigh.
     const text = body({ story: 'I rewrote the billing job over one weekend.' })
     expect(text.indexOf('Candidate facts')).toBeLessThan(text.indexOf("The candidate's own telling"))
+  })
+
+  it('tells the model today’s date — the one it was given, and only that one', () => {
+    // A model that measures a tenure against a stale "now" states it years short. The date is an
+    // input, never read off a clock in here, so the same inputs always build the same prompt.
+    const parts = buildAnswerDraftPrompt(input({ today: '2031-02-03' })).parts as { text: string }[]
+    const dated = parts.filter((p) => p.text.includes("Today's date"))
+    expect(dated.map((p) => p.text)).toEqual([
+      `Today's date: 2031-02-03. It is not a fact about the candidate. If you work out how long something still running has lasted (a role "since March 2024"), measure it up to this date. If you add up experience, add only the dated spans the facts give, never the gaps between them.`,
+    ])
+    expect(parts.map((p) => p.text).join('\n')).not.toContain('2026-09-14')
+    expect(buildAnswerDraftPrompt(input({ today: '2031-02-03' })).system).toBe(buildAnswerDraftPrompt(input()).system)
+  })
+
+  it('puts the date straight before the facts, whose dates it is measured from', () => {
+    const texts = buildAnswerDraftPrompt(input()).parts.map((p) => ('text' in p ? p.text : ''))
+    const facts = texts.findIndex((t) => t.startsWith('Candidate facts'))
+    expect(texts[facts - 1]).toBe(
+      `Today's date: 2026-09-14. It is not a fact about the candidate. If you work out how long something still running has lasted (a role "since March 2024"), measure it up to this date. If you add up experience, add only the dated spans the facts give, never the gaps between them.`,
+    )
   })
 
   it('sends text only — there is nothing here for the model to look at', () => {

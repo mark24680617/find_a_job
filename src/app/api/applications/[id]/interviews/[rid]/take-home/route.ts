@@ -9,11 +9,11 @@ import { researchTakeHome } from '@/lib/research/takeHome'
 // need it too; requireUser runs before either. The research itself is `researchTakeHome`; what
 // is here is the request around it — who is asking, which text is the brief, and the one write.
 //
-// Nothing is written until the synthesis has passed its guard, so a failed run costs under half
-// a minute and not the plan the person already had. Idempotent: a second call replaces the plan.
+// Nothing is written until the synthesis has passed its guard, so a failed run costs about a
+// minute and not the plan the person already had. Idempotent: a second call replaces the plan.
 //
-// The 409 below is the whole reason this route re-reads. A run takes under half a minute, and in
-// that half minute the candidate can paste the real brief in another tab. The plan in hand quotes
+// The 409 below is the whole reason this route re-reads. A run takes about a minute, and in
+// that minute the candidate can paste the real brief in another tab. The plan in hand quotes
 // the document that has just been replaced — every `Quoted` in it was checked against text the
 // round no longer holds — so it is refused rather than stored. This is not the mock route's
 // stale-tab problem, where two conversations would be merged; here one document was swapped for

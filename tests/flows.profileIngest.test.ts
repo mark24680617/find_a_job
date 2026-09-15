@@ -26,7 +26,7 @@ interface SentRequest {
   system?: string
   prompt: unknown[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
 }
 
 describe('runProfileIngest', () => {
@@ -35,12 +35,12 @@ describe('runProfileIngest', () => {
     await expect(runProfileIngest({ pastedText: 'resume' }, generate)).resolves.toEqual(out)
   })
 
-  it('spends 512 thinking tokens — the one flow that reads a whole document', async () => {
+  it('thinks at MEDIUM, at temperature 0, against the profile schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: out }))
     await runProfileIngest({ pastedText: 'resume' }, generate)
 
     const req = generate.mock.calls[0][0] as unknown as SentRequest
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 512 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
     expect(req.output).toEqual({ schema: ProfileIngestOutSchema })
     expect(req.system).toContain('You extract')
     expect(req.prompt).toEqual([{ text: expect.stringContaining('resume') }])

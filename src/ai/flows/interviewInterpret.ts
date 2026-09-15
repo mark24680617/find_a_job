@@ -1,4 +1,4 @@
-import { generateStructured, type GenerateCall } from '@/ai/genkit'
+import { generateStructured, type GenerateCall, type ThinkingLevel } from '@/ai/genkit'
 import {
   buildInterviewInterpretPrompt,
   type InterviewInterpretPromptInput,
@@ -8,10 +8,10 @@ import { InterviewInterpretOutSchema, type InterviewInterpretOut } from '@/ai/sc
 /**
  * Reading a notice is a local read of one short document — which round this is, when, who is
  * on it — with one judgment in it: whether the notice actually states a time or only implies
- * one. That is formParse's kind of work, so it gets formParse's budget. Nothing heavier would
- * make "next Thursday" into a date it is allowed to write down.
+ * one. It is set to LOW because the 2026-09-14 evaluation found no measurable gain from thinking
+ * here (docs/notes/deps.md, "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 256
+const THINKING_LEVEL: ThinkingLevel = 'LOW'
 
 export type InterviewInterpretInput = InterviewInterpretPromptInput
 
@@ -22,7 +22,7 @@ export async function runInterviewInterpret(
 ): Promise<InterviewInterpretOut> {
   const { system, parts } = buildInterviewInterpretPrompt(input)
   return generateStructured(
-    { parts, system, schema: InterviewInterpretOutSchema, thinkingBudget: THINKING_BUDGET },
+    { parts, system, schema: InterviewInterpretOutSchema, thinkingLevel: THINKING_LEVEL },
     generate,
   )
 }

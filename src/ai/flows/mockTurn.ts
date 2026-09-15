@@ -1,4 +1,4 @@
-import { generateStructured, type GenerateCall } from '@/ai/genkit'
+import { generateStructured, type GenerateCall, type ThinkingLevel } from '@/ai/genkit'
 import { summarizeFacts } from '@/ai/prompts/jobInterpret'
 import { buildMockTurnPrompt } from '@/ai/prompts/mockTurn'
 import { summarizeJob, summarizeReported } from '@/ai/prompts/prepBrief'
@@ -9,11 +9,13 @@ import type { Fact, MockTurn, ParsedJob, PracticeMode } from '@/lib/types'
 
 /**
  * One turn is a small decision — read the last answer, follow up or move on, say one thing —
- * made up to eleven times in a session. That is interviewInterpret's kind of local reading,
- * doubled for the one judgment that is not local: whether a question people report from this
- * company actually fits this stage, or would be an adapted near-miss the guard then drops.
+ * made up to eleven times in a session, with one judgment that is not local: whether a question
+ * people report from this company actually fits this stage, or would be an adapted near-miss the
+ * guard then drops. It is set to LOW because the 2026-09-14 evaluation found no measurable gain
+ * from thinking here, and in a live conversation thinking only added wait
+ * (docs/notes/deps.md, "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 512
+const THINKING_LEVEL: ThinkingLevel = 'LOW'
 
 export interface MockTurnInput {
   parsed: ParsedJob
@@ -42,7 +44,7 @@ export async function runMockTurn(input: MockTurnInput, generate?: GenerateCall)
     transcript: input.transcript,
   })
   const out = await generateStructured(
-    { parts, system, schema: MockTurnOutSchema, thinkingBudget: THINKING_BUDGET },
+    { parts, system, schema: MockTurnOutSchema, thinkingLevel: THINKING_LEVEL },
     generate,
   )
   // The prompt asks for a verbatim citation and one follow-up at a time; this is where the

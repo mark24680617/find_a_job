@@ -55,7 +55,7 @@ interface Props {
 
 const RECONCILING = [
   { at: 0, text: 'Comparing with what I know…' },
-  { at: 5000, text: 'Working out what would change…' },
+  { at: 15_000, text: 'Working out what would change…' },
 ] as const
 
 const SAVING = [{ at: 0, text: 'Adding these to your profile…' }] as const
@@ -272,7 +272,7 @@ export function ReconcilePanel({
             busy={busy !== null}
             className="min-w-0 flex-1 basis-full sm:basis-auto"
             stages={busy === 'saving' ? SAVING : RECONCILING}
-            note="Usually takes 10–20 seconds."
+            note="Usually takes 15–45 seconds."
           >
             <p className="max-w-[52ch] text-sm text-ink-3">
               {error ? (

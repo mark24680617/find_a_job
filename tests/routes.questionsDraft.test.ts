@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Application, AskHuman, ClarifyAnswer, Fact, ParsedJob, Profile, Question } from '@/lib/types'
 import type { AnswerDraftOut, ProfileIngestOut } from '@/ai/schemas'
 import { FlowOutputError } from '@/ai/genkit'
@@ -128,12 +128,19 @@ const fromAnotherTab: Fact = {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // Only the clock is faked, so the date the route hands the model is one this file chose.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-09-14T12:00:00.000Z'))
   requireUser.mockResolvedValue({ uid: 'user-1' })
   getApplication.mockResolvedValue(application())
   getProfile.mockResolvedValue(profile)
   runAnswerDraft.mockResolvedValue(out)
   runProfileIngest.mockResolvedValue(ingested)
   setProfile.mockResolvedValue(undefined)
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('POST .../questions/[idx]/draft — what it accepts', () => {
@@ -234,18 +241,26 @@ describe('POST .../questions/[idx]/draft — what it accepts', () => {
 })
 
 describe('POST .../questions/[idx]/draft — what the flow is given', () => {
-  it('hands the flow this question, the posting and the whole profile', async () => {
+  it('hands the flow this question, the posting, today’s date and the whole profile', async () => {
     await POST(post(), ctx('app-1', '1'))
     expect(flowInput()).toEqual({
       question: other,
       parsed,
       jdText: 'Build a ledger.',
+      today: '2026-09-14',
       facts,
       standardAnswers: profile.standardAnswers,
       voiceRules: ['cuts openers, starts with the fact'],
       humanAnswers: [],
       clarifyAnswers: [],
     })
+  })
+
+  it('dates the request in UTC, whatever the hour is where the server sits', async () => {
+    // Half past eleven at night in California is already the fifteenth in UTC.
+    vi.setSystemTime(new Date('2026-09-14T23:30:00-07:00'))
+    await POST(post(), ctx('app-1', '0'))
+    expect(flowInput().today).toBe('2026-09-15')
   })
 
   it('truncates a very long posting before the model ever sees it', async () => {

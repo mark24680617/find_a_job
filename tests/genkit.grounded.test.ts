@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { generateGrounded } from '@/ai/genkit'
+import { generateGrounded, type ThinkingLevel } from '@/ai/genkit'
 
 // The grounded call is the one place the model is allowed to read the web. What is pinned:
 // the built-in tool is asked for, no schema is imposed (Gemini's grounding and JSON mode do
@@ -11,11 +11,11 @@ const custom = JSON.parse(readFileSync('tests/fixtures/grounding-response.json',
 describe('generateGrounded', () => {
   it('asks for Google Search, sends no output schema, and reads the metadata', async () => {
     const generate = vi.fn().mockResolvedValue({ output: null, text: 'line one\nline two', custom })
-    const res = await generateGrounded({ parts: [{ text: 'q' }], system: 'sys', thinkingBudget: 512 }, generate)
+    const res = await generateGrounded({ parts: [{ text: 'q' }], system: 'sys', thinkingLevel: 'MEDIUM' }, generate)
     const opts = generate.mock.calls[0][0]
     expect(opts.config.tools).toEqual([{ googleSearch: {} }])
     expect(opts.config.temperature).toBe(0)
-    expect(opts.config.thinkingConfig).toEqual({ thinkingBudget: 512 })
+    expect(opts.config.thinkingConfig).toStrictEqual({ thinkingLevel: 'MEDIUM' })
     expect(opts.output).toBeUndefined()
     expect(res.text).toBe('line one\nline two')
     expect(res.chunks).toEqual([
@@ -26,6 +26,12 @@ describe('generateGrounded', () => {
       { text: 'The loop opens with a 30-minute recruiter screen.', chunkIndices: [1] },
       { text: 'A take-home follows, usually three days.', chunkIndices: [0, 1] },
     ])
+  })
+  // The level is the only thinking knob sent: a request carrying a numeric budget as well is a 400.
+  it.each<ThinkingLevel>(['LOW', 'MEDIUM', 'HIGH'])('sends %s as given, and never a thinking budget', async (thinkingLevel) => {
+    const generate = vi.fn().mockResolvedValue({ output: null, text: '', custom: {} })
+    await generateGrounded({ parts: [{ text: 'q' }], thinkingLevel }, generate)
+    expect(generate.mock.calls[0][0].config.thinkingConfig).toStrictEqual({ thinkingLevel })
   })
   // A support cites a chunk by its position in the list, so a chunk we cannot use still has
   // to occupy its slot. Drop it and every later index slides down one, and the map would
@@ -48,7 +54,7 @@ describe('generateGrounded', () => {
       ],
     }
     const generate = vi.fn().mockResolvedValue({ output: null, text: 'This rests on the third chunk.', custom: gappy })
-    const res = await generateGrounded({ parts: [{ text: 'q' }] }, generate)
+    const res = await generateGrounded({ parts: [{ text: 'q' }], thinkingLevel: 'MEDIUM' }, generate)
     expect(res.chunks).toHaveLength(3)
     expect(res.chunks[1].uri).toBe('')
     expect(res.supports[0].chunkIndices).toEqual([2])
@@ -56,11 +62,11 @@ describe('generateGrounded', () => {
   })
   it('returns empty metadata when the response carries none', async () => {
     const generate = vi.fn().mockResolvedValue({ output: null, text: 'nothing', custom: {} })
-    const res = await generateGrounded({ parts: [{ text: 'q' }] }, generate)
+    const res = await generateGrounded({ parts: [{ text: 'q' }], thinkingLevel: 'MEDIUM' }, generate)
     expect(res).toEqual({ text: 'nothing', chunks: [], supports: [] })
   })
   it('lets a transport error through untouched — the caller decides', async () => {
     const generate = vi.fn().mockRejectedValue(new Error('429 quota'))
-    await expect(generateGrounded({ parts: [{ text: 'q' }] }, generate)).rejects.toThrow('429 quota')
+    await expect(generateGrounded({ parts: [{ text: 'q' }], thinkingLevel: 'MEDIUM' }, generate)).rejects.toThrow('429 quota')
   })
 })

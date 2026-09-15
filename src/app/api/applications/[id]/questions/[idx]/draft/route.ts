@@ -3,6 +3,7 @@ import { runProfileIngest } from '@/ai/flows/profileIngest'
 import { FlowOutputError } from '@/ai/genkit'
 import type { AnswerDraftOut } from '@/ai/schemas'
 import { requireUser } from '@/lib/auth'
+import { utcToday } from '@/lib/dates'
 import { getApplication, getProfile, setProfile, updateApplication } from '@/lib/db'
 import { isCoverLetter, needsStoryAsk, readLetterhead, STORY_ASK } from '@/lib/letter/letterhead'
 import { mergeStory } from '@/lib/profileMerge'
@@ -242,6 +243,8 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
       // The raw posting rule 8 matches against — truncated, since a long one blows the budget
       // and the screens it reasons from are near the top.
       jdText: before.jdRaw.slice(0, JD_LIMIT),
+      // What a tenure still running is measured up to; the prompt carries no clock of its own.
+      today: utcToday(),
       facts: profile.facts,
       standardAnswers: profile.standardAnswers,
       // The rule text is what the model applies; the evidence behind each is what the profile

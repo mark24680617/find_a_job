@@ -34,6 +34,7 @@ const question = (over: Partial<Question> = {}): Question => ({
 const input = (over: Partial<Parameters<typeof buildClarifyDraftPrompt>[0]> = {}) => ({
   question: question(),
   jdText: 'Own the payments platform. Deep reliability work. Minimum 5 years backend.',
+  today: '2026-09-14',
   facts,
   standardAnswers: {},
   clarifyAnswers: [] as ClarifyAnswer[],
@@ -146,6 +147,26 @@ describe('buildClarifyDraftPrompt parts', () => {
 
   it('tells the model to number its questions c1, c2, …', () => {
     expect(body()).toContain('Number your questions c1, c2, c3 … in order.')
+  })
+
+  it('tells the model today’s date — the one it was given, and only that one', () => {
+    // Measured: with no date in front of it the round stated a tenure the facts put at nearly
+    // five years as "~3.5 years", in four runs of four.
+    const parts = buildClarifyDraftPrompt(input({ today: '2031-02-03' })).parts as { text: string }[]
+    const dated = parts.filter((p) => p.text.includes("Today's date"))
+    expect(dated.map((p) => p.text)).toEqual([
+      `Today's date: 2031-02-03. It is not a fact about the candidate. If you work out how long something still running has lasted (a role "since March 2024"), measure it up to this date. If you add up experience, add only the dated spans the facts give, never the gaps between them.`,
+    ])
+    expect(parts.map((p) => p.text).join('\n')).not.toContain('2026-09-14')
+    expect(buildClarifyDraftPrompt(input({ today: '2031-02-03' })).system).toBe(buildClarifyDraftPrompt(input()).system)
+  })
+
+  it('puts the date straight before the facts, whose dates it is measured from', () => {
+    const texts = buildClarifyDraftPrompt(input()).parts.map((p) => ('text' in p ? p.text : ''))
+    const facts = texts.findIndex((t) => t.startsWith('Candidate facts'))
+    expect(texts[facts - 1]).toBe(
+      `Today's date: 2026-09-14. It is not a fact about the candidate. If you work out how long something still running has lasted (a role "since March 2024"), measure it up to this date. If you add up experience, add only the dated spans the facts give, never the gaps between them.`,
+    )
   })
 
   it('sends text only — there is nothing here for the model to look at', () => {

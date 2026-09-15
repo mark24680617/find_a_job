@@ -4,7 +4,7 @@ import { type GenerateCall } from '@/ai/genkit'
 import { FormParseOutSchema } from '@/ai/schemas'
 
 // The Genkit call is injected, so this exercises the real prompt, the real schema and the
-// real budget — everything except the network.
+// real thinking level — everything except the network.
 
 const out = {
   questions: [
@@ -25,7 +25,7 @@ interface SentRequest {
   system?: string
   prompt: ({ text?: string } | { media?: { url: string; contentType: string } })[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
 }
 
 const sent = (generate: { mock: { calls: unknown[][] } }) =>
@@ -37,12 +37,12 @@ describe('runFormParse', () => {
     await expect(runFormParse({ text: 'Question 1', images: [] }, generate)).resolves.toEqual(out)
   })
 
-  it('spends 256 thinking tokens — reading a control type is judgment, not reasoning', async () => {
+  it('thinks at MEDIUM, at temperature 0, against the form schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: out }))
     await runFormParse({ text: 'Question 1', images: [] }, generate)
 
     const req = sent(generate)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 256 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
     expect(req.output).toEqual({ schema: FormParseOutSchema })
     expect(req.system).toContain('You read a job-application form')
   })

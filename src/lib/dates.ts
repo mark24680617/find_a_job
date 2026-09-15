@@ -18,3 +18,13 @@ export function dateOnly(
     timeZone: opts.timeZone,
   })
 }
+
+/**
+ * Today's calendar date in UTC, as `YYYY-MM-DD` — what the draft and clarify routes put in front
+ * of the model, so a tenure still running is measured to now rather than to whatever "now" the
+ * model assumes. UTC on purpose, unlike the letterhead's local `todayIso`: this is read by a
+ * server, and a day either way does not move a duration measured in years.
+ */
+export function utcToday(now = new Date()): string {
+  return now.toISOString().slice(0, 10)
+}

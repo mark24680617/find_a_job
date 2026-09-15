@@ -23,6 +23,7 @@ import {
   positioningChoicesPart,
   standardAnswersPart,
   storyPart,
+  todayPart,
   voiceRulesPart,
   type AnswerDraftInput,
 } from '@/ai/prompts/answerDraft'
@@ -121,10 +122,10 @@ function letterPart(
 
 /**
  * The letter first — it names the role, the company and the addressee, and every other section
- * is read through it — then the posting, the parsed job, the facts, and whatever the candidate
- * has settled. Empty sections are dropped rather than sent as bare headers, as they are for an
- * answer. A blank company is refused: a letter to nobody is the one situation that forces the
- * model to invent the addressee, and it is the addressee that makes this a letter at all.
+ * is read through it — then the posting, the parsed job, today's date, the facts, and whatever the
+ * candidate has settled. Empty sections are dropped rather than sent as bare headers, as they are
+ * for an answer. A blank company is refused: a letter to nobody is the one situation that forces
+ * the model to invent the addressee, and it is the addressee that makes this a letter at all.
  */
 export function buildCoverLetterPrompt(input: AnswerDraftInput): {
   system: string
@@ -135,6 +136,7 @@ export function buildCoverLetterPrompt(input: AnswerDraftInput): {
     letterPart(input.parsed, input.letter),
     jobPostingPart(input.jdText),
     jobPart(input.parsed),
+    todayPart(input.today),
     factsPart(input.facts),
     storyPart(input.story),
     positioningChoicesPart(input.clarifyAnswers),

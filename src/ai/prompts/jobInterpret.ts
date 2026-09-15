@@ -7,6 +7,7 @@
  * fails the build if this one drifts.
  */
 import type { Part } from '@/ai/genkit'
+import { todayPart } from '@/ai/prompts/answerDraft'
 import type { Fact } from '@/lib/types'
 
 const SYSTEM = `You interpret one job posting for one specific candidate.
@@ -41,12 +42,17 @@ export function summarizeFacts(facts: Fact[]): string {
 
 export interface JobInterpretPromptInput {
   jdText: string
+  /** Today's date, `YYYY-MM-DD` — the caller's clock, never read in here. See `todayPart`. */
+  today: string
   factsSummary: string
 }
 
 /**
  * The posting goes first — it is the document being interpreted — and the candidate facts
- * follow as the lens the gates are judged through. An empty jdText is refused: interpreting
+ * follow as the lens the gates are judged through, with today's date straight before them: a
+ * numeric minimum ("5 years") is judged against dated facts ("since March 2024"), and a model
+ * that thinks does that arithmetic against a stale "now" unless it is told the date (the same
+ * line the answer prompt carries — see `todayPart`). An empty jdText is refused: interpreting
  * a posting that isn't there is the one situation that forces the model to invent the
  * requirements it is supposed to be reading. An empty factsSummary is allowed (see above).
  */
@@ -57,6 +63,7 @@ export function buildJobInterpretPrompt(input: JobInterpretPromptInput): {
   if (!input.jdText.trim()) throw new Error('jobInterpret needs jdText')
   const parts: Part[] = [
     { text: `Job posting:\n${input.jdText}` },
+    { text: todayPart(input.today) },
     { text: `Candidate facts:\n${input.factsSummary}` },
   ]
   return { system: SYSTEM, parts }

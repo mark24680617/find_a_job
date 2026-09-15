@@ -1,7 +1,7 @@
 /**
  * The single Genkit entry point. Every flow reaches the model through
- * `generateStructured` — there is no other call site, so the model, the thinking budget
- * and the retry policy are decided in exactly one place.
+ * `generateStructured` — there is no other call site, so the model and the retry policy are
+ * decided in exactly one place. The thinking level is not: each flow states its own.
  *
  * Nothing here touches the network at import time: `googleAI()` only registers the
  * plugin, and the API key is read from GEMINI_API_KEY when a call is actually made.
@@ -12,16 +12,24 @@ import { googleAI } from '@genkit-ai/google-genai'
 const ai = genkit({ plugins: [googleAI()] })
 
 // Passed explicitly on every request so the request object fully describes the call.
-const model = googleAI.model('gemini-3.7-flash')
+const model = googleAI.model('gemini-3.8-flash')
 
 /** A prompt fragment. Media is inlined as a data URL: `data:<mime>;base64,<data>`. */
 export type Part = { text: string } | { media: { url: string; contentType: string } }
 
+/**
+ * How much the model may think — a relative allowance, not a token count. It is the only thinking
+ * knob sent: Gemini 3 keeps the numeric thinking budget for backward compatibility and buckets it
+ * into these same levels (every budget up to 3000 behaves as LOW), and a request carrying both is
+ * a 400. `MINIMAL` is left out because this model rejects it. Measured in docs/notes/deps.md.
+ */
+export type ThinkingLevel = 'LOW' | 'MEDIUM' | 'HIGH'
+
 export interface GenerateStructuredOptions<T> {
   parts: Part[]
   schema: z.ZodType<T>
-  /** Thinking tokens the model may spend. Defaults to 0 — flows opt in deliberately. */
-  thinkingBudget?: number
+  /** Required, with no default: every flow states the level it needs. */
+  thinkingLevel: ThinkingLevel
   /**
    * Sampling temperature. Defaults to 0, and it is always sent: leaving it unset applies
    * Gemini's own default, which is high. Task 10 measured what that costs — ten identical
@@ -86,7 +94,7 @@ export async function generateStructured<T>(
         output: { schema: opts.schema },
         config: {
           temperature: opts.temperature ?? 0,
-          thinkingConfig: { thinkingBudget: opts.thinkingBudget ?? 0 },
+          thinkingConfig: { thinkingLevel: opts.thinkingLevel },
         },
       })
       output = response.output
@@ -119,7 +127,7 @@ export async function generateStructured<T>(
 export interface GenerateGroundedOptions {
   parts: Part[]
   system?: string
-  thinkingBudget?: number
+  thinkingLevel: ThinkingLevel
 }
 
 export interface GroundedResult {
@@ -154,7 +162,7 @@ export async function generateGrounded(
     prompt: opts.parts,
     config: {
       temperature: 0,
-      thinkingConfig: { thinkingBudget: opts.thinkingBudget ?? 0 },
+      thinkingConfig: { thinkingLevel: opts.thinkingLevel },
       tools: [{ googleSearch: {} }],
     },
   })

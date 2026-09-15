@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Application, ClarifyQuestion, ParsedJob, Profile, Question } from '@/lib/types'
 import type { ClarifyDraftOut } from '@/ai/schemas'
 import { FlowOutputError } from '@/ai/genkit'
@@ -93,10 +93,17 @@ const flowInput = () => runClarifyDraft.mock.calls[0][0] as ClarifyDraftInput
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // Only the clock is faked, so the date the route hands the model is one this file chose.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-09-14T12:00:00.000Z'))
   requireUser.mockResolvedValue({ uid: 'user-1' })
   getApplication.mockResolvedValue(application())
   getProfile.mockResolvedValue(profile)
   runClarifyDraft.mockResolvedValue(out)
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('POST .../questions/[idx]/clarify — what it accepts', () => {
@@ -151,11 +158,12 @@ describe('POST .../questions/[idx]/clarify — what it accepts', () => {
 })
 
 describe('POST .../questions/[idx]/clarify — what the flow is given', () => {
-  it('hands the flow the question, the posting and the profile facts, minus the UNKNOWN answers left for the prompt', async () => {
+  it('hands the flow the question, the posting, today’s date and the profile facts, minus the UNKNOWN answers left for the prompt', async () => {
     await POST(post({}), ctx('app-1', '0'))
     expect(flowInput()).toEqual({
       question: question(),
       jdText: application().jdRaw,
+      today: '2026-09-14',
       facts: profile.facts,
       standardAnswers: profile.standardAnswers,
       clarifyAnswers: [],
@@ -172,6 +180,13 @@ describe('POST .../questions/[idx]/clarify — what the flow is given', () => {
     getApplication.mockResolvedValue(application({ questions: [settled, other] }))
     await POST(post({}), ctx('app-1', '0'))
     expect(flowInput().clarifyAnswers).toEqual([])
+  })
+
+  it('dates the request in UTC, whatever the hour is where the server sits', async () => {
+    // Half past eleven at night in California is already the fifteenth in UTC.
+    vi.setSystemTime(new Date('2026-09-14T23:30:00-07:00'))
+    await POST(post({}), ctx('app-1', '0'))
+    expect(flowInput().today).toBe('2026-09-15')
   })
 
   it('truncates a very long posting before the model ever sees it', async () => {

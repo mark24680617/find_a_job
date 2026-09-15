@@ -1,6 +1,7 @@
 import { fetchPosting, FetchBlockedError } from '@/adapters'
 import { runJobInterpret } from '@/ai/flows/jobInterpret'
 import { requireUser } from '@/lib/auth'
+import { utcToday } from '@/lib/dates'
 import { createApplication, getProfile, listApplications } from '@/lib/db'
 import type { Application } from '@/lib/types'
 
@@ -65,7 +66,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const profile = await getProfile(user.uid)
-  const parsed = await runJobInterpret({ jdText: src.jdText, facts: profile.facts })
+  const parsed = await runJobInterpret({ jdText: src.jdText, today: utcToday(), facts: profile.facts })
 
   const now = new Date().toISOString()
   // Company and role: the user's correction first (Ashby/Lever hand back a slug-derived

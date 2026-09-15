@@ -1,4 +1,4 @@
-import { generateStructured, type GenerateCall } from '@/ai/genkit'
+import { generateStructured, type GenerateCall, type ThinkingLevel } from '@/ai/genkit'
 import {
   buildLetterheadFillPrompt,
   type LetterheadFillPromptInput,
@@ -9,10 +9,11 @@ import { normalizeWs, QUOTE_CAP } from '@/lib/research/quotes'
 import type { Fact, Letterhead } from '@/lib/types'
 
 /**
- * Nothing, as the transcription gets nothing. Five fields are copied out of two documents that
- * either state them or do not; thinking tokens spent here buy a plausible address.
+ * Five fields are copied out of two documents that either state them or do not. It is set to LOW
+ * because the 2026-09-14 evaluation found no measurable gain from thinking here
+ * (docs/notes/deps.md, "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 0
+const THINKING_LEVEL: ThinkingLevel = 'LOW'
 
 export type LetterheadFillInput = LetterheadFillPromptInput
 
@@ -76,7 +77,7 @@ export async function runLetterheadFill(
 ): Promise<FilledLetterhead> {
   const { system, parts } = buildLetterheadFillPrompt(input)
   const out = await generateStructured(
-    { parts, system, schema: LetterheadFillOutSchema, thinkingBudget: THINKING_BUDGET },
+    { parts, system, schema: LetterheadFillOutSchema, thinkingLevel: THINKING_LEVEL },
     generate,
   )
 

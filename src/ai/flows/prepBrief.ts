@@ -1,4 +1,4 @@
-import { generateStructured, type GenerateCall } from '@/ai/genkit'
+import { generateStructured, type GenerateCall, type ThinkingLevel } from '@/ai/genkit'
 import { summarizeFacts } from '@/ai/prompts/jobInterpret'
 import {
   buildPrepBriefPrompt,
@@ -13,10 +13,11 @@ import type { Fact, ParsedJob, PrepBrief, RoundType } from '@/lib/types'
 /**
  * Five sections, each of which has to be weighed against the same three inputs: which of the
  * candidate's clusters answers which likely question, which unmet gate is going to surface in
- * THIS round rather than another one, which claims are load-bearing enough to rehearse. That
- * is the same shape of work jobInterpret's gate judgment does, and it gets the same budget.
+ * THIS round rather than another one, which claims are load-bearing enough to rehearse. Even so,
+ * it is set to LOW because the 2026-09-14 evaluation found no measurable gain from thinking here
+ * (docs/notes/deps.md, "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 1024
+const THINKING_LEVEL: ThinkingLevel = 'LOW'
 
 export interface PrepBriefInput {
   roundType: RoundType
@@ -53,7 +54,7 @@ export async function runPrepBrief(
     reportedSummary: input.reported ? summarizeReported(input.reported) : undefined,
   })
   const out = await generateStructured(
-    { parts, system, schema: PrepBriefOutSchema, thinkingBudget: THINKING_BUDGET },
+    { parts, system, schema: PrepBriefOutSchema, thinkingLevel: THINKING_LEVEL },
     generate,
   )
   // Asked for in the prompt, enforced here, exactly as the rehearsal-line filter is: a sourceId

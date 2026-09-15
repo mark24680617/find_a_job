@@ -11,7 +11,7 @@ export function LandingFooter() {
         <a href="https://github.com/mark24680617/find_a_job" className="btn-link" target="_blank" rel="noreferrer">
           Find a Job · MIT licence
         </a>
-        <span>Built with Gemini 3.7 Flash · Genkit · Cloud Run · Firebase</span>
+        <span>Built with Gemini 3.8 Flash · Genkit · Cloud Run · Firebase</span>
         <Link href="/sign-in" className="btn-link ml-auto">
           Sign in
         </Link>

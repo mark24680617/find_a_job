@@ -30,7 +30,7 @@ export const FAQ: readonly { q: string; a: string }[] = [
   },
   {
     q: 'Which model writes the drafts, and why should I trust it?',
-    a: 'Gemini 3.7 Flash, at temperature zero. After every draft, code — not the model — checks that the stated length is met, that every cited phrase appears verbatim, and that every citation names a fact you actually have. A draft that fails is refused, not smoothed over.',
+    a: 'Gemini 3.8 Flash, at temperature zero. After every draft, code — not the model — checks that the stated length is met, that every cited phrase appears verbatim, and that every citation names a fact you actually have. A draft that fails is refused, not smoothed over.',
   },
   {
     q: 'Does it learn how I write?',

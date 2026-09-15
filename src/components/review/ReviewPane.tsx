@@ -111,19 +111,22 @@ const DRAFT_STAGES = [
   { at: 0, text: 'Writing the answer…' },
   { at: 5000, text: 'Checking every claim against your facts…' },
 ]
-// Unmeasured, and knowingly left standing: the cover-letter smoke of 2026-09-07 compared the two
-// notes and re-measured only the letter's. The whole `answerDraft` smoke — process start, one
-// draft, printing — finished in 2.2 seconds of wall clock that same afternoon, so this range reads
-// as stale as the letter's did. Re-measuring it is a change to the wait every question in the
-// product promises, and that wants runs of its own rather than a letter's three.
-const DRAFT_NOTE = 'Usually takes 10–20 seconds.'
-// A letter is three times the length of a form answer and thinks with three times the budget,
-// but it is still one call, and the smoke of 2026-09-07 measured it: the three runs kept beside
-// that smoke's README drafted in 2.2, 2.1 and 1.9 seconds of model time, none of them corrected,
-// and the slowest draft of the forty-six runs behind that README was 2.8 seconds. The range is
-// that ceiling with room for the route's own reads and for the correction round, which spends a
+// The same two lines on a letter's clock. The claim check runs after the model call, so its line
+// lands just before the fastest measured letter call (27 seconds) ends rather than five seconds in,
+// where it would sit over most of a minute of writing.
+const LETTER_DRAFT_STAGES = [
+  { at: 0, text: 'Writing the answer…' },
+  { at: 25_000, text: 'Checking every claim against your facts…' },
+]
+// Measured at MEDIUM thinking on 2026-09-14 (docs/notes/deps.md, "Thinking levels per flow"): a
+// form answer's draft call took 5–22 seconds, median about 10, over fifteen runs, with two outliers
+// near a minute. The range is that spread with room for the route's own reads.
+const DRAFT_NOTE = 'Usually takes 10–30 seconds.'
+// A letter is three times the length of a form answer, but it is still one call. Measured the same
+// day at MEDIUM over twenty runs: 27–75 seconds, median about 51. A story told for the first time
+// adds a profile ingest of 5–14 seconds before it, and the correction round, rarely needed, spends a
 // second call.
-const LETTER_DRAFT_NOTE = 'Usually takes 5–10 seconds.'
+const LETTER_DRAFT_NOTE = 'Usually takes about a minute.'
 
 // Said in two places, because there are two places a draft can be asked for while the letterhead
 // is in hand: under the panel, where the buttons that start one are, and beside the ask queue's
@@ -972,7 +975,7 @@ export function ReviewPane({
           <Working
             busy={drafting || clarifying}
             className="mt-4 empty:mt-0"
-            stages={clarifying ? CLARIFY_STAGES : DRAFT_STAGES}
+            stages={clarifying ? CLARIFY_STAGES : letter ? LETTER_DRAFT_STAGES : DRAFT_STAGES}
             note={clarifying ? CLARIFY_NOTE : letter ? LETTER_DRAFT_NOTE : DRAFT_NOTE}
           />
 

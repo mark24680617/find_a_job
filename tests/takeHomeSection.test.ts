@@ -124,7 +124,7 @@ describe('TakeHomeSection — not planned', () => {
       'Reads the brief, searches for what people report about Marram Systems’s take-home, and lays out a plan inside its limits.',
     )
     expect(out).toContain('Plan the take-home')
-    expect(out).toContain('Takes under half a minute.')
+    expect(out).toContain('Takes about a minute.')
     expect(out).not.toContain('disabled=""')
   })
 
@@ -164,7 +164,7 @@ describe('TakeHomeSection — planning', () => {
     expect(out).not.toContain('Plan the take-home')
     expect(out).toContain('role="status"')
     expect(out).toContain('Starting the searches…')
-    expect(out).toContain('Usually takes under half a minute.')
+    expect(out).toContain('Usually takes 30–60 seconds.')
   })
 })
 

@@ -14,7 +14,7 @@ describe('runProcessGather', () => {
     expect(res.notes).toEqual(['One.', 'Two.', 'Three.'])
     expect(res.chunks).toHaveLength(2)
     expect(res.supports).toHaveLength(2)
-    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingBudget: 512 })
+    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'LOW' })
   })
   // A leading year is the observation, not a list marker the model added.
   it('strips a list number but leaves a year that opens a sentence', async () => {
@@ -32,7 +32,7 @@ describe('runProcessDigest', () => {
     })
     const res = await runProcessDigest({ company: 'M', title: 't', text }, generate)
     expect(res.quotes).toEqual(['Two coding, one system design'])
-    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingBudget: 256 })
+    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'LOW' })
   })
   it('turns a null publishedAt into undefined', async () => {
     const generate = vi.fn().mockResolvedValue({ output: { takeaways: ['x'], questionsReported: [], quotes: [], publishedAt: null, firstHand: false } })
@@ -57,7 +57,7 @@ describe('runProcessSynthesize', () => {
     expect(map.stages[0].duration).toBe('30 min')
     expect(map.timeline).toBeUndefined()
     expect(map.takeHome.timeBudget).toBeUndefined()
-    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingBudget: 2048 })
+    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'MEDIUM' })
   })
   it('sends a guard rejection back once, then accepts the corrected map', async () => {
     const bad = { ...good, stages: [{ ...good.stages[0], sourceIds: ['s9'] }] }

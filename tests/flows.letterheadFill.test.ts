@@ -61,10 +61,10 @@ describe('runLetterheadFill — what it keeps', () => {
     expect(filled).toStrictEqual({ recipient: 'Dana Wu' })
   })
 
-  it('thinks for nothing — this is a read, not a judgment', async () => {
+  it('thinks at LOW, at temperature 0', async () => {
     const generate = vi.fn().mockResolvedValue({ output: none })
     await runLetterheadFill(input, generate)
-    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingBudget: 0 })
+    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'LOW' })
     expect(generate.mock.calls[0][0].config.temperature).toBe(0)
   })
 })

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Application, ParsedJob, Profile } from '@/lib/types'
 
 // Every handler with everything behind it faked: no Admin SDK, no adapter network, no model
@@ -83,10 +83,17 @@ const ctx = (id: string) => ({ params: Promise.resolve({ id }) })
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // Only the clock is faked, so the date the route hands the model is one this file chose.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-09-14T12:00:00.000Z'))
   requireUser.mockResolvedValue({ uid: 'user-1' })
   getProfile.mockResolvedValue(profile)
   runJobInterpret.mockResolvedValue(parsed)
   createApplication.mockResolvedValue('app-1')
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('POST /api/applications — from a URL', () => {
@@ -106,6 +113,7 @@ describe('POST /api/applications — from a URL', () => {
     expect(fetchPosting).toHaveBeenCalledWith('https://jobs.ashbyhq.com/trm-labs/abc')
     expect(runJobInterpret).toHaveBeenCalledWith({
       jdText: 'Build a safer world. Minimum 8 years.',
+      today: '2026-09-14',
       facts: profile.facts,
     })
 
@@ -121,6 +129,13 @@ describe('POST /api/applications — from a URL', () => {
     expect(app.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
 
     await expect(res.json()).resolves.toMatchObject({ id: 'app-1', status: 'draft' })
+  })
+
+  it('dates the gate judgment in UTC, whatever the hour is where the server sits', async () => {
+    // Half past eleven at night in California is already the fifteenth in UTC.
+    vi.setSystemTime(new Date('2026-09-14T23:30:00-07:00'))
+    await POST(post({ url: 'https://jobs.ashbyhq.com/trm-labs/abc' }))
+    expect((runJobInterpret.mock.calls[0][0] as { today: string }).today).toBe('2026-09-15')
   })
 
   it('takes the adapter company/role when the body gives none', async () => {

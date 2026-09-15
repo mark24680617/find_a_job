@@ -1,4 +1,4 @@
-import { FlowOutputError, generateStructured, type GenerateCall, type Part } from '@/ai/genkit'
+import { FlowOutputError, generateStructured, type GenerateCall, type Part, type ThinkingLevel } from '@/ai/genkit'
 import { buildProcessSynthesizePrompt, type ProcessSynthesizePromptInput } from '@/ai/prompts/processSynthesize'
 import { ProcessSynthesizeOutSchema, type ProcessSynthesizeOut } from '@/ai/schemas'
 import { guardProcessMap, type SynthesizedMap } from '@/lib/research/guard'
@@ -6,9 +6,11 @@ import { guardProcessMap, type SynthesizedMap } from '@/lib/research/guard'
 /**
  * This is the judgment call of the feature: reconciling five searches and six write-ups into
  * one ordered loop, deciding what is reported and what is merely usual, and citing each
- * stage to what actually says so. The highest budget any flow here gets.
+ * stage to what actually says so. It is at MEDIUM as a hedge: no level separated from noise, and
+ * HIGH twice called a take-home "yes" on "some tracks" evidence, so being the judgment call is no
+ * reason to raise it (docs/notes/deps.md, "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 2048
+const THINKING_LEVEL: ThinkingLevel = 'MEDIUM'
 
 /** Nullable on the wire, optional on the record — the shape the rest of the product uses. */
 function toMap(out: ProcessSynthesizeOut): SynthesizedMap {
@@ -47,7 +49,7 @@ const correction = (previous: ProcessSynthesizeOut, problems: string[]): Part =>
 export async function runProcessSynthesize(input: ProcessSynthesizePromptInput, generate?: GenerateCall): Promise<SynthesizedMap> {
   const { system, parts } = buildProcessSynthesizePrompt(input)
   const ids = new Set(input.sourceIds)
-  const opts = { system, schema: ProcessSynthesizeOutSchema, thinkingBudget: THINKING_BUDGET }
+  const opts = { system, schema: ProcessSynthesizeOutSchema, thinkingLevel: THINKING_LEVEL }
 
   // The map the guard saw is the map that ships: one of its rules walks an uncited "no" on
   // the take-home back to "unknown" in place, and a second `toMap` of the same output would

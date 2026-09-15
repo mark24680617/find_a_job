@@ -7,13 +7,13 @@ import type { ReportedQuestion, StagePlacement } from '@/lib/practice'
 import type { Fact, ParsedJob } from '@/lib/types'
 
 // The Genkit call is injected, so these exercise the real prompts, the real schemas and the
-// real budgets — everything except the network.
+// real thinking levels — everything except the network.
 
 interface SentRequest {
   system?: string
   prompt: { text?: string }[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
 }
 
 const sent = (generate: { mock: { calls: unknown[][] } }) =>
@@ -36,12 +36,12 @@ describe('runInterviewInterpret', () => {
     await expect(runInterviewInterpret({ noticeText: NOTICE }, generate)).resolves.toEqual(interpreted)
   })
 
-  it('spends 256 thinking tokens at temperature 0 — one short document, read once', async () => {
+  it('thinks at LOW at temperature 0 against the round schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: interpreted }))
     await runInterviewInterpret({ noticeText: NOTICE }, generate)
 
     const req = sent(generate)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 256 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'LOW' } })
     expect(req.output).toEqual({ schema: InterviewInterpretOutSchema })
     expect(req.system).toContain('You interpret an interview notice')
   })
@@ -133,12 +133,12 @@ describe('runPrepBrief', () => {
     ).resolves.toEqual(briefStored)
   })
 
-  it('spends 1024 thinking tokens at temperature 0 — five sections, each a judgment', async () => {
+  it('thinks at LOW at temperature 0 against the brief schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
     await runPrepBrief({ roundType: 'recruiter-screen', parsed, facts }, generate)
 
     const req = sent(generate)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 1024 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'LOW' } })
     expect(req.output).toEqual({ schema: PrepBriefOutSchema })
     expect(req.system).toContain('You write an interview prep brief for one round')
   })

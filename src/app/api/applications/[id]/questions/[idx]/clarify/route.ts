@@ -2,6 +2,7 @@ import { runClarifyDraft } from '@/ai/flows/clarifyDraft'
 import { FlowOutputError } from '@/ai/genkit'
 import type { ClarifyDraftOut } from '@/ai/schemas'
 import { requireUser } from '@/lib/auth'
+import { utcToday } from '@/lib/dates'
 import { getApplication, getProfile, updateApplication } from '@/lib/db'
 import type { Application, Question } from '@/lib/types'
 
@@ -61,6 +62,8 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     out = await runClarifyDraft({
       question: asked,
       jdText: before.jdRaw.slice(0, JD_LIMIT),
+      // What a tenure still running is measured up to; the prompt carries no clock of its own.
+      today: utcToday(),
       facts: profile.facts,
       standardAnswers: profile.standardAnswers,
       // Always empty: a fresh round supersedes and its answers are cleared on the write below,

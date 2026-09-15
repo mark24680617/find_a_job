@@ -510,10 +510,10 @@ function ProfileVault() {
                       ? 'Fetching that page…'
                       : 'Reading your notes…',
                 },
-                { at: 4000, text: 'Comparing with what I already know…' },
-                { at: 10_000, text: 'Almost there — working out what would change…' },
+                { at: 10_000, text: 'Comparing with what I already know…' },
+                { at: 25_000, text: 'Almost there — working out what would change…' },
               ]}
-              note="Usually takes 10–20 seconds."
+              note="Usually takes 30–60 seconds."
             >
               <p className="max-w-[52ch] text-sm text-ink-3">
                 {factsDirty

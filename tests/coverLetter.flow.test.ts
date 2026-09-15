@@ -41,6 +41,7 @@ const input = (over: Partial<Parameters<typeof runAnswerDraft>[0]> = {}) => ({
   question: newCoverLetter('Tom Candidate', 'tom@x.test'),
   parsed,
   jdText: 'Own the ledger and settlement services.',
+  today: '2026-09-14',
   facts,
   standardAnswers: {},
   voiceRules: [],
@@ -67,7 +68,7 @@ const returning = (...outputs: AnswerDraftOut[]) => {
 interface SentRequest {
   system?: string
   prompt: { text?: string }[]
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
 }
 const sent = (generate: ReturnType<typeof returning>, n: number) =>
   generate.mock.calls[n][0] as unknown as SentRequest
@@ -78,16 +79,22 @@ const correction = (generate: ReturnType<typeof returning>) => {
 }
 
 describe('runAnswerDraft — a cover letter', () => {
-  it('spends 2048 thinking tokens on it, against a form answer’s 1024', async () => {
-    // Three times the length, with a shape to hold and a bridge to choose.
+  it('thinks at MEDIUM on it, as a form answer does', async () => {
+    // Provisional: the letter keeps its own level, pending a MEDIUM-vs-HIGH letter test.
     const generate = returning(draft())
     await runAnswerDraft(input(), generate)
-    expect(sent(generate, 0).config.thinkingConfig).toEqual({ thinkingBudget: 2048 })
+    expect(sent(generate, 0).config.thinkingConfig).toEqual({ thinkingLevel: 'MEDIUM' })
     expect(sent(generate, 0).system).toContain('You draft one cover letter')
 
     const form = returning(draft({ text: 'A backend system I designed.' }))
     await runAnswerDraft(input({ question: formQuestion, letter: undefined }), form)
-    expect(sent(form, 0).config.thinkingConfig).toEqual({ thinkingBudget: 1024 })
+    expect(sent(form, 0).config.thinkingConfig).toEqual({ thinkingLevel: 'MEDIUM' })
+  })
+
+  it('puts the date it was given in front of the model', async () => {
+    const generate = returning(draft())
+    await runAnswerDraft(input({ today: '2031-02-03' }), generate)
+    expect(sent(generate, 0).prompt.map((p) => p.text ?? '').join('\n')).toContain("Today's date: 2031-02-03.")
   })
 
   it('returns a letter that opens, closes and fits, without a second call', async () => {

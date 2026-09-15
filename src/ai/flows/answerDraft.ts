@@ -1,23 +1,29 @@
-import { FlowOutputError, generateStructured, type GenerateCall, type Part } from '@/ai/genkit'
+import { FlowOutputError, generateStructured, type GenerateCall, type Part, type ThinkingLevel } from '@/ai/genkit'
 import { buildAnswerDraftPrompt, statedLimit, type AnswerDraftInput } from '@/ai/prompts/answerDraft'
 import { AnswerDraftOutSchema, type AnswerDraftOut } from '@/ai/schemas'
 import { countUnits } from '@/lib/countText'
 import { letterProblems } from '@/lib/letter/guard'
 
 /**
- * The most reasoning-heavy flow in the product, and the only one whose output a human signs
- * their name to: it has to pick which story answers THIS question, keep every claim tied to
- * a fact, count its own words, and decide what it cannot know. jobInterpret's 1024 is the
- * right size for that; nothing lighter would leave room for the choosing.
+ * One of the flows that has to reason, and the only one whose output a human signs their name
+ * to: it has to pick which story answers THIS question, keep every claim tied to a fact, count
+ * its own words, and decide what it cannot know. It is at MEDIUM because, where the facts left a
+ * hole, no thinking wrote a story around it in about 6–7 of 9 samples and MEDIUM in 0 of 6
+ * (docs/notes/deps.md, "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 1024
+const THINKING_LEVEL: ThinkingLevel = 'MEDIUM'
 
 /**
- * A cover letter gets twice that. It is three times the length of a form answer, it has a shape
- * to hold across three or four blocks, and it has to choose whether there is anything to bridge
- * at all — none of which is reasoning the letter's rules can do for it.
+ * A cover letter is three times the length of a form answer, it has a shape to hold across three
+ * or four blocks, and it has to choose whether there is anything to bridge at all — none of which
+ * is reasoning the letter's rules can do for it. It is at MEDIUM because with no thinking 8 of 8
+ * replay letters invented claims about the candidate, and at MEDIUM none did. It keeps its own
+ * constant because a MEDIUM-vs-HIGH letter test settled it separately: HIGH did not
+ * beat MEDIUM consistently, and it attached supported facts to an unsupported employer or stack
+ * more often, at roughly twice the wait (docs/notes/deps.md, "Thinking levels per flow — evaluated
+ * 2026-09-14").
  */
-const LETTER_THINKING_BUDGET = 2048
+const LETTER_THINKING_LEVEL: ThinkingLevel = 'MEDIUM'
 
 /**
  * What the schema cannot see. Genkit checks the SHAPE of the output — a citation is a string
@@ -123,8 +129,8 @@ export async function runAnswerDraft(
         parts: prompt,
         system,
         schema: AnswerDraftOutSchema,
-        thinkingBudget:
-          input.question.kind === 'cover-letter' ? LETTER_THINKING_BUDGET : THINKING_BUDGET,
+        thinkingLevel:
+          input.question.kind === 'cover-letter' ? LETTER_THINKING_LEVEL : THINKING_LEVEL,
       },
       generate,
     )

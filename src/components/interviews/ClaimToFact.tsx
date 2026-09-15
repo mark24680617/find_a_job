@@ -20,7 +20,7 @@ import type { Changeset, ClarifyAnswer, ClarifyQuestion, Fact } from '@/lib/type
  *
  * It renders the panel and nothing of its own once the first answer lands. The wait before that
  * is the only thing this adds: the panel cannot exist until the server has said what it would
- * change, and ten seconds of a blank space below the item is a screen that looks broken.
+ * change, and half a minute of a blank space below the item is a screen that looks broken.
  */
 
 /**
@@ -81,7 +81,7 @@ interface Props {
 
 const RECONCILING = [
   { at: 0, text: 'Comparing with what I know…' },
-  { at: 5000, text: 'Working out what would change…' },
+  { at: 15_000, text: 'Working out what would change…' },
 ] as const
 
 /** The reconcile, both times: the first read of the claim and every second opinion on it. */
@@ -230,7 +230,7 @@ export function ClaimToFact({ said, snippet, facts, onApplied, onClose }: Props)
         <p className="mt-1.5 max-w-[62ch] font-display text-[0.9375rem] leading-relaxed text-ink-2">
           “{said}”
         </p>
-        <Working busy={busy !== null} className="mt-3" stages={RECONCILING} note="Usually takes 10–20 seconds.">
+        <Working busy={busy !== null} className="mt-3" stages={RECONCILING} note="Usually takes 15–45 seconds.">
           <p className="max-w-[52ch] text-sm">
             {error ? <span className="text-danger">{error}</span> : <span className="text-ink-3">Nothing is saved yet.</span>}
           </p>

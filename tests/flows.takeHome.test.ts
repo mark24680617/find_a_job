@@ -19,7 +19,7 @@ describe('runTakeHomeDigest', () => {
     firstHand: true,
   }
 
-  it('keeps only the quotes the write-up really contains, and thinks for 256', async () => {
+  it('keeps only the quotes the write-up really contains, and thinks at LOW', async () => {
     const generate = vi.fn().mockResolvedValue({ output: out })
     const res = await runTakeHomeDigest({ company: 'Marram Systems', title: 'My Marram take-home', text }, generate)
     // The second quote is a plausible sentence nobody wrote; it does not reach the synthesis.
@@ -27,7 +27,7 @@ describe('runTakeHomeDigest', () => {
     // Everything else comes back as the model wrote it: the structured fields feed the
     // synthesis, and publishedAt is what dates the source.
     expect(res).toStrictEqual({ ...out, quotes: ['They gave us four days'] })
-    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingBudget: 256 })
+    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'LOW' })
   })
 
   it('hands back a digest with no takeaways — whether to drop it is the run’s call', async () => {
@@ -81,7 +81,7 @@ describe('runTakeHomeSynthesize', () => {
     caveats: ['One source.'],
   }
 
-  it('strips the nulls to absent and thinks for 2048', async () => {
+  it('strips the nulls to absent and thinks at MEDIUM', async () => {
     const generate = vi.fn().mockResolvedValue({ output: good })
     const guide = await runTakeHomeSynthesize(input, generate)
     expect(guide.plan[0].budget).toBe('10 min')
@@ -91,7 +91,7 @@ describe('runTakeHomeSynthesize', () => {
       text: 'Four hours at most.',
       quote: 'Spend no more than four hours on it.',
     })
-    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingBudget: 2048 })
+    expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'MEDIUM' })
     expect(generate).toHaveBeenCalledTimes(1)
   })
 

@@ -24,6 +24,8 @@ export interface ClarifyDraftInput {
   question: Question
   /** The raw posting — the depth source. The caller truncates it before it arrives here. */
   jdText: string
+  /** Today's date, `YYYY-MM-DD` — the caller's clock, never read in here. See `todayPart`. */
+  today: string
   facts: Fact[]
   /** The candidate's settled answers, straight off the profile — "UNKNOWN" values and all. */
   standardAnswers: Record<string, string>
@@ -58,6 +60,17 @@ function askPart(question: Question): string {
 /** The posting, verbatim — the material the model reads the role's real screens out of. */
 function jobPostingPart(jdText: string): string {
   return `The job posting:\n${jdText}`
+}
+
+/**
+ * Today's date, so a tenure still running is measured to now and not to the model's own stale
+ * "now" — without it this round put nearly five years of dated experience across two roles at
+ * "~3.5 years" in four runs of four (docs/notes/deps.md, "Thinking levels per flow — evaluated
+ * 2026-09-14"). The same line the answer prompt carries, and for the same reason placed straight
+ * before the facts whose dates it is read against.
+ */
+function todayPart(today: string): string {
+  return `Today's date: ${today}. It is not a fact about the candidate. If you work out how long something still running has lasted (a role "since March 2024"), measure it up to this date. If you add up experience, add only the dated spans the facts give, never the gaps between them.`
 }
 
 /**
@@ -122,6 +135,7 @@ export function buildClarifyDraftPrompt(input: ClarifyDraftInput): {
   const sections = [
     askPart(input.question),
     jobPostingPart(input.jdText),
+    todayPart(input.today),
     factsPart(input.facts),
     standardAnswersPart(input.standardAnswers),
     priorChoicesPart(input.clarifyAnswers),

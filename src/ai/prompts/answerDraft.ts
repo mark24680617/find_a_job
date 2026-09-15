@@ -37,6 +37,11 @@ export interface AnswerDraftInput {
   parsed: ParsedJob
   /** The raw posting — what rule 8 reads the role's real screens out of. Caller truncates it. */
   jdText: string
+  /**
+   * Today's date, `YYYY-MM-DD` — the caller's clock, never read in here, so the same inputs
+   * always build the same prompt. What `todayPart` measures a running tenure up to.
+   */
+  today: string
   facts: Fact[]
   /** The candidate's settled answers, straight off the profile — "UNKNOWN" values and all. */
   standardAnswers: Record<string, string>
@@ -102,6 +107,22 @@ export function jobPart(parsed: ParsedJob): string {
 export function jobPostingPart(jdText: string): string | null {
   if (!jdText.trim()) return null
   return `The job posting:\n${jdText}`
+}
+
+/**
+ * Today's date, and what it is for. With no date in front of it, a model that thinks does date
+ * arithmetic against a stale "now": clarifyDraft put nearly five years of dated experience across
+ * two roles at "~3.5 years" in four runs of four (docs/notes/deps.md, "Thinking levels per flow —
+ * evaluated 2026-09-14"). Only a duration still running is measured to today — a role that ended
+ * has its own end date, and measuring that one to now would lengthen it. The line itself tells the
+ * model the date is not a fact about the candidate, so it licenses no claim, and it says how to
+ * measure, not whether to state a number (the letter's rule 4 still decides that). Experience is
+ * added up from the dated spans alone: first start to today would count the gaps between roles and
+ * overstate a total against a stated minimum. Placed straight before the facts, whose dates it is
+ * read against. jobInterpret sends the same line, for the same arithmetic in its gate judgment.
+ */
+export function todayPart(today: string): string {
+  return `Today's date: ${today}. It is not a fact about the candidate. If you work out how long something still running has lasted (a role "since March 2024"), measure it up to this date. If you add up experience, add only the dated spans the facts give, never the gaps between them.`
 }
 
 /**
@@ -197,6 +218,7 @@ export function buildAnswerDraftPrompt(input: AnswerDraftInput): {
     askPart(input.question),
     jobPostingPart(input.jdText),
     jobPart(input.parsed),
+    todayPart(input.today),
     factsPart(input.facts),
     storyPart(input.story),
     positioningChoicesPart(input.clarifyAnswers),

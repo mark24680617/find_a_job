@@ -5,7 +5,7 @@ import { JobInterpretOutSchema } from '@/ai/schemas'
 import type { Fact } from '@/lib/types'
 
 // The Genkit call is injected, so this exercises the real prompt, the real schema and the
-// real budget — everything except the network.
+// real thinking level — everything except the network.
 
 const facts: Fact[] = [
   { id: 'f1', claim: 'Three years backend on payments', sourceSnippet: 'Backend engineer', tags: ['backend'] },
@@ -28,41 +28,42 @@ interface SentRequest {
   system?: string
   prompt: { text?: string }[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
 }
 
 describe('runJobInterpret', () => {
   it('returns the parsed posting', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: out }))
-    await expect(runJobInterpret({ jdText: 'a posting', facts }, generate)).resolves.toEqual(out)
+    await expect(runJobInterpret({ jdText: 'a posting', today: '2026-09-14', facts }, generate)).resolves.toEqual(out)
   })
 
-  it('spends 1024 thinking tokens — the gate call is where reasoning pays', async () => {
+  it('thinks at MEDIUM, at temperature 0, against the posting schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: out }))
-    await runJobInterpret({ jdText: 'a posting', facts }, generate)
+    await runJobInterpret({ jdText: 'a posting', today: '2026-09-14', facts }, generate)
 
     const req = generate.mock.calls[0][0] as unknown as SentRequest
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 1024 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
     expect(req.output).toEqual({ schema: JobInterpretOutSchema })
     expect(req.system).toContain('You interpret one job posting')
   })
 
-  it('sends the posting and a snippet-free fact summary', async () => {
+  it('sends the posting, today’s date and a snippet-free fact summary', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: out }))
-    await runJobInterpret({ jdText: 'Staff Backend Engineer, 8 years Go', facts }, generate)
+    await runJobInterpret({ jdText: 'Staff Backend Engineer, 8 years Go', today: '2031-02-03', facts }, generate)
 
     const prompt = (generate.mock.calls[0][0] as unknown as SentRequest).prompt
     const text = prompt.map((p) => p.text ?? '').join('\n')
     expect(text).toContain('Staff Backend Engineer, 8 years Go')
     expect(text).toContain('f1: Three years backend on payments')
     expect(text).toContain('f2: Ships Go in production')
+    expect(text).toContain("Today's date: 2031-02-03.")
     // Provenance snippets stay in the vault; the gate judgment never sees them.
     expect(text).not.toContain('Written in Go')
   })
 
   it('interprets a posting for a candidate with no facts yet', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: out }))
-    await expect(runJobInterpret({ jdText: 'a posting', facts: [] }, generate)).resolves.toEqual(out)
+    await expect(runJobInterpret({ jdText: 'a posting', today: '2026-09-14', facts: [] }, generate)).resolves.toEqual(out)
     expect(generate).toHaveBeenCalledTimes(1)
   })
 })

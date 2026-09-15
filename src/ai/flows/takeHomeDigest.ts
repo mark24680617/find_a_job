@@ -1,10 +1,14 @@
-import { generateStructured, type GenerateCall } from '@/ai/genkit'
+import { generateStructured, type GenerateCall, type ThinkingLevel } from '@/ai/genkit'
 import { buildTakeHomeDigestPrompt, type TakeHomeDigestPromptInput } from '@/ai/prompts/takeHomeDigest'
 import { TakeHomeDigestOutSchema, type TakeHomeDigestOut } from '@/ai/schemas'
 import { verifyQuotes } from '@/lib/research/quotes'
 
-/** Summarising one page is transcription-shaped work, as the process map's digest is. */
-const THINKING_BUDGET = 256
+/**
+ * Summarising one page is transcription-shaped work, as the process map's digest is. It is set to
+ * LOW because the 2026-09-14 evaluation found no measurable gain from thinking here
+ * (docs/notes/deps.md, "Thinking levels per flow — evaluated 2026-09-14").
+ */
+const THINKING_LEVEL: ThinkingLevel = 'LOW'
 
 /**
  * One write-up in — what it says about this company's take-home out, with every quote checked
@@ -22,7 +26,7 @@ export async function runTakeHomeDigest(
 ): Promise<TakeHomeDigestOut> {
   const { system, parts } = buildTakeHomeDigestPrompt(input)
   const out = await generateStructured(
-    { parts, system, schema: TakeHomeDigestOutSchema, thinkingBudget: THINKING_BUDGET },
+    { parts, system, schema: TakeHomeDigestOutSchema, thinkingLevel: THINKING_LEVEL },
     generate,
   )
   // The prompt asks for verbatim; this is where the asking stops and the property begins.

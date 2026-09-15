@@ -131,7 +131,7 @@ flowchart TB
   end
 
   FS["Firestore<br/>users/uid/applications/id/interviews/id"]
-  GEM["Gemini 3.7 Flash"]
+  GEM["Gemini 3.8 Flash"]
   ATS["ATS APIs<br/>Ashby · Greenhouse · Lever"]
 
   UI -->|"sign in"| AUTH
@@ -147,7 +147,7 @@ flowchart TB
 The client never reads Firestore. It holds a Firebase Auth session, and every piece of data on
 screen arrived through a route handler that verified the ID token first.
 
-**Built with:** Gemini 3.7 Flash · Genkit · Cloud Run · Firestore · Firebase Auth · Next.js 16 ·
+**Built with:** Gemini 3.8 Flash · Genkit · Cloud Run · Firestore · Firebase Auth · Next.js 16 ·
 TypeScript · Tailwind
 
 ---

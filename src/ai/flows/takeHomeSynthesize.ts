@@ -1,4 +1,4 @@
-import { FlowOutputError, generateStructured, type GenerateCall, type Part } from '@/ai/genkit'
+import { FlowOutputError, generateStructured, type GenerateCall, type Part, type ThinkingLevel } from '@/ai/genkit'
 import {
   buildTakeHomeSynthesizePrompt,
   type TakeHomeSynthesizePromptInput,
@@ -9,10 +9,11 @@ import { guardTakeHomeGuide, type SynthesizedGuide } from '@/lib/research/takeHo
 /**
  * The judgment call of this feature: reading one brief closely enough to quote it correctly,
  * reconciling what strangers report about the same assignment, and laying out a plan that fits
- * inside the brief's own limits — while keeping those three kinds of sentence apart. The same
- * budget the process map's synthesis gets, for the same reason.
+ * inside the brief's own limits — while keeping those three kinds of sentence apart. It is at
+ * MEDIUM as a hedge: HIGH won clearly on only one brief of three, and MEDIUM often spends no
+ * thought tokens at all (docs/notes/deps.md, "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 2048
+const THINKING_LEVEL: ThinkingLevel = 'MEDIUM'
 
 // The guide's shape lives with the guard that checks it, as `SynthesizedMap` lives in
 // `src/lib/research/guard.ts`. Re-exported here because this flow is what produces one, and a
@@ -69,7 +70,7 @@ export async function runTakeHomeSynthesize(
 ): Promise<SynthesizedGuide> {
   const { system, parts } = buildTakeHomeSynthesizePrompt(input)
   const ids = new Set(input.sourceIds)
-  const opts = { system, schema: TakeHomeSynthesizeOutSchema, thinkingBudget: THINKING_BUDGET }
+  const opts = { system, schema: TakeHomeSynthesizeOutSchema, thinkingLevel: THINKING_LEVEL }
   // `input.brief` is the haystack, and it is the same string the prompt laid out under "The
   // brief, in its own words:". One field rather than two: a second copy of the brief carried
   // beside the first is a second chance for them to differ, and a guide checked against a text

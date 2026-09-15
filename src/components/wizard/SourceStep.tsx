@@ -214,7 +214,7 @@ export function SourceStep({ onCreated }: Props) {
             note="Usually takes 5–15 seconds."
           >
             <p className="max-w-[52ch] text-sm text-ink-3">
-              Takes a few seconds — it gets read against the facts in your profile.
+              Takes up to about 15 seconds — it gets read against the facts in your profile.
             </p>
           </Working>
         </div>

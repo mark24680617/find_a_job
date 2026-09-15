@@ -39,15 +39,18 @@ import type { Cited, InterviewRound, Quoted, ResearchSource } from '@/lib/types'
  * The clock is set from the runs we have measured rather than from the twelve reads the estimate
  * was built for: four live plans in `docs/superpowers/smoke/2026-09-06-take-home/` finished in
  * 18, 17, 17 and 6 seconds, because the read step finds five or six pages worth opening and not
- * twelve. A wait that over-states itself by three times is a wait somebody walks away from.
+ * twelve. A wait that over-states itself by three times is a wait somebody walks away from. Those
+ * runs synthesised at LOW thinking; at MEDIUM (docs/notes/deps.md, 2026-09-14) a whole plan took
+ * 30–59 seconds, so the same lines now advance at about twice the spacing, the last one landing
+ * just before the fastest of those runs ends.
  */
 const PLAN_STAGES = [
   { at: 0, text: 'Starting the searches…' },
-  { at: 3_000, text: 'Searching for what people report…' },
-  { at: 8_000, text: 'Reading the best write-ups…' },
-  { at: 14_000, text: 'Laying out the plan…' },
+  { at: 6_000, text: 'Searching for what people report…' },
+  { at: 16_000, text: 'Reading the best write-ups…' },
+  { at: 28_000, text: 'Laying out the plan…' },
 ]
-const PLAN_NOTE = 'Usually takes under half a minute.'
+const PLAN_NOTE = 'Usually takes 30–60 seconds.'
 
 /**
  * The two reasons the button cannot be pressed. They are different facts and say different
@@ -183,7 +186,7 @@ export function TakeHomeSection({ appId, round, company, brief, lock, setLock, o
             Plan the take-home
           </button>
           {blocked !== '' && <span className="text-sm text-ink-3">{blocked}</span>}
-          <span className="text-sm text-ink-3">Takes under half a minute.</span>
+          <span className="text-sm text-ink-3">Takes about a minute.</span>
         </div>
       )}
 

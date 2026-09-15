@@ -1,13 +1,15 @@
-import { FlowOutputError, generateStructured, type GenerateCall, type Part } from '@/ai/genkit'
+import { FlowOutputError, generateStructured, type GenerateCall, type Part, type ThinkingLevel } from '@/ai/genkit'
 import { buildClarifyDraftPrompt, type ClarifyDraftInput } from '@/ai/prompts/clarifyDraft'
 import { ClarifyDraftOutSchema, type ClarifyDraftOut } from '@/ai/schemas'
 
 /**
- * Reasoning-heavy in the same way jobInterpret is: the model has to read what the role
- * screens for out of the posting, then find where the candidate's facts leave the answer
- * open. 1024 is the budget that leaves room for that; nothing lighter would.
+ * The model has to read what the role screens for out of the posting, then find where the
+ * candidate's facts leave the answer open. It is at MEDIUM for the letter path, where no thinking
+ * pre-ticked a forbidden UK/visa promise in 3 of 4 rounds and MEDIUM in 0 of 4. On the form path
+ * it is a hedge: the little evidence there (n = 2) went against MEDIUM (docs/notes/deps.md,
+ * "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 1024
+const THINKING_LEVEL: ThinkingLevel = 'MEDIUM'
 
 /**
  * What the schema cannot see — both checks are relationships between fields, not shapes.
@@ -76,7 +78,7 @@ export async function runClarifyDraft(
   const { system, parts } = buildClarifyDraftPrompt(input)
   const ask = (prompt: Part[]) =>
     generateStructured(
-      { parts: prompt, system, schema: ClarifyDraftOutSchema, thinkingBudget: THINKING_BUDGET },
+      { parts: prompt, system, schema: ClarifyDraftOutSchema, thinkingLevel: THINKING_LEVEL },
       generate,
     )
 

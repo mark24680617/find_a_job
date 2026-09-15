@@ -1,4 +1,4 @@
-import { generateStructured, type GenerateCall } from '@/ai/genkit'
+import { generateStructured, type GenerateCall, type ThinkingLevel } from '@/ai/genkit'
 import { summarizeFacts } from '@/ai/prompts/jobInterpret'
 import { buildMockDebriefPrompt } from '@/ai/prompts/mockDebrief'
 import { summarizeJob } from '@/ai/prompts/prepBrief'
@@ -8,11 +8,12 @@ import type { Fact, MockTurn, ParsedJob, PracticeMode } from '@/lib/types'
 
 /**
  * Reading a whole conversation back, deciding what landed against what this stage probes, and
- * checking every sentence the candidate said about themselves against their fact bank is the
- * same weight of work as writing the brief — several judgments over the same inputs — so it
- * gets the brief's budget. It is spent once per session, not once per turn.
+ * checking every sentence the candidate said about themselves against their fact bank is several
+ * judgments over the same inputs. Even so, it is set to LOW because the 2026-09-14 evaluation
+ * found no measurable gain from thinking here
+ * (docs/notes/deps.md, "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 1024
+const THINKING_LEVEL: ThinkingLevel = 'LOW'
 
 export interface MockDebriefInput {
   parsed: ParsedJob
@@ -35,7 +36,7 @@ export async function runMockDebrief(
     transcript: input.transcript,
   })
   const out = await generateStructured(
-    { parts, system, schema: MockDebriefOutSchema, thinkingBudget: THINKING_BUDGET },
+    { parts, system, schema: MockDebriefOutSchema, thinkingLevel: THINKING_LEVEL },
     generate,
   )
   // Every amber sentence on the screen is offered to the candidate as their own words, and a

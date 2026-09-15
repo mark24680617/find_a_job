@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, type Mock } from 'vitest'
 import { z } from 'genkit'
-import { FlowOutputError, generateStructured, type GenerateCall, type Part } from '@/ai/genkit'
+import {
+  FlowOutputError,
+  generateStructured,
+  type GenerateCall,
+  type GenerateStructuredOptions,
+  type Part,
+  type ThinkingLevel,
+} from '@/ai/genkit'
 
 // The Genkit call is injected so nothing here touches the network or needs an API key.
 // What is under test is everything around that call: request construction, the single
@@ -22,7 +29,7 @@ interface SentRequest {
   system?: string
   prompt: Part[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: ThinkingLevel } }
 }
 const sent = (generate: Mock<GenerateCall>, n: number) =>
   generate.mock.calls[n][0] as unknown as SentRequest
@@ -30,29 +37,47 @@ const sent = (generate: Mock<GenerateCall>, n: number) =>
 describe('generateStructured', () => {
   it('returns the parsed output of a first-try success', async () => {
     const generate = vi.fn<GenerateCall>(() => ok(valid))
-    await expect(generateStructured({ parts, schema: Schema }, generate)).resolves.toEqual(valid)
+    await expect(generateStructured({ parts, schema: Schema, thinkingLevel: 'MEDIUM' }, generate)).resolves.toEqual(valid)
     expect(generate).toHaveBeenCalledTimes(1)
   })
 
-  it('sends the parts, the schema, a zero thinking budget and a zero temperature by default', async () => {
+  it('sends the parts, the schema, the thinking level and a zero temperature by default', async () => {
     const generate = vi.fn<GenerateCall>(() => ok(valid))
-    await generateStructured({ parts, schema: Schema, system: 'You extract job facts.' }, generate)
+    await generateStructured(
+      { parts, schema: Schema, system: 'You extract job facts.', thinkingLevel: 'MEDIUM' },
+      generate,
+    )
 
     const req = sent(generate, 0)
     expect(req.model).toBeDefined()
     expect(req.system).toBe('You extract job facts.')
     expect(req.prompt).toEqual(parts)
     expect(req.output).toEqual({ schema: Schema })
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 0 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
   })
 
-  it('passes an explicit thinking budget through', async () => {
-    const generate = vi.fn<GenerateCall>(() => ok(valid))
-    await generateStructured({ parts, schema: Schema, thinkingBudget: 512 }, generate)
-    expect(sent(generate, 0).config).toEqual({
-      temperature: 0,
-      thinkingConfig: { thinkingBudget: 512 },
-    })
+  // The level is the only thinking knob sent. Gemini 3 buckets the legacy numeric budget into
+  // these same levels, and a request carrying both is a 400 — so a budget must never ride along.
+  it.each<ThinkingLevel>(['LOW', 'MEDIUM', 'HIGH'])(
+    'sends %s as given on both attempts, and never a thinking budget',
+    async (thinkingLevel) => {
+      const generate = vi
+        .fn<GenerateCall>()
+        .mockImplementationOnce(() => ok({ role: 'Backend Engineer', years: 'three' }))
+        .mockImplementationOnce(() => ok(valid))
+
+      await generateStructured({ parts, schema: Schema, thinkingLevel }, generate)
+      expect(generate).toHaveBeenCalledTimes(2)
+      for (const n of [0, 1]) {
+        expect(sent(generate, n).config.thinkingConfig).toStrictEqual({ thinkingLevel })
+      }
+    },
+  )
+
+  it('will not take a request that names no thinking level', () => {
+    // @ts-expect-error — there is no default level: every flow states its own.
+    const opts: GenerateStructuredOptions<z.infer<typeof Schema>> = { parts, schema: Schema }
+    expect(opts).not.toHaveProperty('thinkingLevel')
   })
 
   // Temperature is sent on every request, never left to the provider's default. T10 measured
@@ -60,10 +85,10 @@ describe('generateStructured', () => {
   // same 8-field form, and one returned 2. A caller that wants variety asks for it.
   it('passes an explicit temperature through, including one the default would hide', async () => {
     const generate = vi.fn<GenerateCall>(() => ok(valid))
-    await generateStructured({ parts, schema: Schema, temperature: 0.9 }, generate)
+    await generateStructured({ parts, schema: Schema, temperature: 0.9, thinkingLevel: 'LOW' }, generate)
     expect(sent(generate, 0).config).toEqual({
       temperature: 0.9,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: { thinkingLevel: 'LOW' },
     })
   })
 
@@ -73,16 +98,16 @@ describe('generateStructured', () => {
       .mockImplementationOnce(() => ok({ role: 'Backend Engineer', years: 'three' }))
       .mockImplementationOnce(() => ok(valid))
 
-    await generateStructured({ parts, schema: Schema, temperature: 0.4 }, generate)
+    await generateStructured({ parts, schema: Schema, temperature: 0.4, thinkingLevel: 'LOW' }, generate)
     expect(sent(generate, 1).config).toEqual({
       temperature: 0.4,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: { thinkingLevel: 'LOW' },
     })
   })
 
   it('omits system when the caller gives none', async () => {
     const generate = vi.fn<GenerateCall>(() => ok(valid))
-    await generateStructured({ parts, schema: Schema }, generate)
+    await generateStructured({ parts, schema: Schema, thinkingLevel: 'MEDIUM' }, generate)
     expect(sent(generate, 0).system).toBeUndefined()
   })
 
@@ -92,7 +117,7 @@ describe('generateStructured', () => {
       .mockImplementationOnce(() => ok({ role: 'Backend Engineer', years: 'three' }))
       .mockImplementationOnce(() => ok(valid))
 
-    await expect(generateStructured({ parts, schema: Schema }, generate)).resolves.toEqual(valid)
+    await expect(generateStructured({ parts, schema: Schema, thinkingLevel: 'MEDIUM' }, generate)).resolves.toEqual(valid)
     expect(generate).toHaveBeenCalledTimes(2)
 
     const retryPrompt = sent(generate, 1).prompt
@@ -108,7 +133,7 @@ describe('generateStructured', () => {
       .mockRejectedValueOnce(new Error('generated output failed schema validation'))
       .mockImplementationOnce(() => ok(valid))
 
-    await expect(generateStructured({ parts, schema: Schema }, generate)).resolves.toEqual(valid)
+    await expect(generateStructured({ parts, schema: Schema, thinkingLevel: 'MEDIUM' }, generate)).resolves.toEqual(valid)
     expect(sent(generate, 1).prompt[parts.length]).toMatchObject({
       text: expect.stringContaining('schema validation'),
     })
@@ -120,13 +145,13 @@ describe('generateStructured', () => {
       .mockImplementationOnce(() => ok(null))
       .mockImplementationOnce(() => ok(valid))
 
-    await expect(generateStructured({ parts, schema: Schema }, generate)).resolves.toEqual(valid)
+    await expect(generateStructured({ parts, schema: Schema, thinkingLevel: 'MEDIUM' }, generate)).resolves.toEqual(valid)
     expect(generate).toHaveBeenCalledTimes(2)
   })
 
   it('throws FlowOutputError after the retry also fails, without a third call', async () => {
     const generate = vi.fn<GenerateCall>(() => ok({ role: 'Backend Engineer' }))
-    const promise = generateStructured({ parts, schema: Schema }, generate)
+    const promise = generateStructured({ parts, schema: Schema, thinkingLevel: 'MEDIUM' }, generate)
 
     await expect(promise).rejects.toBeInstanceOf(FlowOutputError)
     await expect(promise).rejects.toThrow('generateStructured failed after one retry: years: Required')
@@ -136,7 +161,7 @@ describe('generateStructured', () => {
   it('reports a transport failure as itself, not as a schema mismatch', async () => {
     const boom = new Error('502 from the model API')
     const generate = vi.fn<GenerateCall>(() => Promise.reject(boom))
-    const promise = generateStructured({ parts, schema: Schema }, generate)
+    const promise = generateStructured({ parts, schema: Schema, thinkingLevel: 'MEDIUM' }, generate)
 
     await expect(promise).rejects.toMatchObject({ name: 'FlowOutputError', cause: boom })
     await expect(promise).rejects.toThrow(
@@ -146,6 +171,6 @@ describe('generateStructured', () => {
 
   it('strips keys the schema does not declare', async () => {
     const generate = vi.fn<GenerateCall>(() => ok({ ...valid, hallucinated: 'nonsense' }))
-    await expect(generateStructured({ parts, schema: Schema }, generate)).resolves.toEqual(valid)
+    await expect(generateStructured({ parts, schema: Schema, thinkingLevel: 'MEDIUM' }, generate)).resolves.toEqual(valid)
   })
 })

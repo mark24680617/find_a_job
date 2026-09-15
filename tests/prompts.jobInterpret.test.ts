@@ -31,7 +31,7 @@ const facts: Fact[] = [
 ]
 const factsSummary = summarizeFacts(facts)
 
-const built = () => buildJobInterpretPrompt({ jdText, factsSummary })
+const built = (today = '2026-09-14') => buildJobInterpretPrompt({ jdText, today, factsSummary })
 const system = () => built().system
 const textOf = (parts: ReturnType<typeof built>['parts']) =>
   parts.map((p) => ('text' in p ? p.text : '')).join('\n')
@@ -64,7 +64,7 @@ describe('buildJobInterpretPrompt system text', () => {
   })
 
   it('is the same text whatever the inputs are', () => {
-    expect(buildJobInterpretPrompt({ jdText: 'other', factsSummary: '' }).system).toBe(system())
+    expect(buildJobInterpretPrompt({ jdText: 'other', today: '2031-02-03', factsSummary: '' }).system).toBe(system())
   })
 })
 
@@ -83,6 +83,24 @@ describe('buildJobInterpretPrompt parts', () => {
       expect(text).toContain(f.id)
       expect(text).toContain(f.claim)
     }
+  })
+
+  it('tells the model today’s date — the one it was given, and only that one', () => {
+    // A numeric minimum is judged against dated facts, and a model that thinks measures a role
+    // still running against a stale "now" unless it is told the date.
+    const parts = built('2031-02-03').parts as { text: string }[]
+    const dated = parts.filter((p) => p.text.includes("Today's date"))
+    expect(dated.map((p) => p.text)).toEqual([
+      `Today's date: 2031-02-03. It is not a fact about the candidate. If you work out how long something still running has lasted (a role "since March 2024"), measure it up to this date. If you add up experience, add only the dated spans the facts give, never the gaps between them.`,
+    ])
+    expect(textOf(parts)).not.toContain('2026-09-14')
+  })
+
+  it('puts the date straight before the facts, whose dates the gates are measured from', () => {
+    const texts = built().parts.map((p) => ('text' in p ? p.text : ''))
+    const factsAt = texts.findIndex((t) => t.startsWith('Candidate facts'))
+    expect(texts[0]).toMatch(/^Job posting:/)
+    expect(texts[factsAt - 1]).toMatch(/^Today's date: 2026-09-14\. /)
   })
 })
 

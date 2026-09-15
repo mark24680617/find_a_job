@@ -4,7 +4,7 @@ import { type GenerateCall } from '@/ai/genkit'
 import { FeedbackDistillOutSchema } from '@/ai/schemas'
 
 // The Genkit call is injected, so this exercises the real prompt, the real schema and the
-// real budget — everything except the network.
+// real thinking level — everything except the network.
 
 const out = {
   rules: [{ rule: 'cuts openers, starts with the fact', evidence: 'I am excited to → I own' }],
@@ -14,7 +14,7 @@ interface SentRequest {
   system?: string
   prompt: ({ text?: string } | { media?: { url: string; contentType: string } })[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
 }
 
 const sent = (generate: { mock: { calls: unknown[][] } }) =>
@@ -32,12 +32,12 @@ describe('runFeedbackDistill', () => {
     await expect(runFeedbackDistill(input, generate)).resolves.toEqual(out)
   })
 
-  it('spends 256 thinking tokens at temperature 0, and binds the schema', async () => {
+  it('thinks at LOW at temperature 0, and binds the schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: out }))
     await runFeedbackDistill(input, generate)
 
     const req = sent(generate)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 256 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'LOW' } })
     expect(req.output).toEqual({ schema: FeedbackDistillOutSchema })
     expect(req.system).toContain('Compare the AI draft with the human')
   })

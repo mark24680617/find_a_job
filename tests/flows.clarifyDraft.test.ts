@@ -5,7 +5,7 @@ import { ClarifyDraftOutSchema, type ClarifyDraftOut } from '@/ai/schemas'
 import type { Fact, Question } from '@/lib/types'
 
 // The Genkit call is injected, so this exercises the real prompt, the real schema and the
-// real budget — everything except the network. What is under test is what happens AFTER the
+// real thinking level — everything except the network. What is under test is what happens AFTER the
 // model answers: a `recommended` that names no real option is a default the UI cannot honour,
 // and it is a relationship between two fields, not a shape, so the schema cannot catch it.
 
@@ -24,6 +24,7 @@ const question: Question = {
 const input = () => ({
   question,
   jdText: 'Own the payments platform. Deep reliability work. Minimum 5 years backend.',
+  today: '2026-09-14',
   facts,
   standardAnswers: {},
   clarifyAnswers: [],
@@ -56,7 +57,7 @@ interface SentRequest {
   system?: string
   prompt: { text?: string }[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
 }
 const sent = (generate: ReturnType<typeof returning>, n: number) =>
   generate.mock.calls[n][0] as unknown as SentRequest
@@ -71,14 +72,20 @@ const reasons = (generate: ReturnType<typeof returning>) =>
   correction(generate).split('Why they were rejected:')[1] ?? ''
 
 describe('runClarifyDraft — the request', () => {
-  it('spends 1024 thinking tokens on the schema, at the default temperature', async () => {
+  it('thinks at MEDIUM on the schema, at the default temperature', async () => {
     const generate = returning(out(q()))
     await runClarifyDraft(input(), generate)
 
     const req = sent(generate, 0)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 1024 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
     expect(req.output).toEqual({ schema: ClarifyDraftOutSchema })
     expect(req.system).toContain('You set up one job-application answer before it is written')
+  })
+
+  it('puts the date it was given in front of the model', async () => {
+    const generate = returning(out(q()))
+    await runClarifyDraft({ ...input(), today: '2031-02-03' }, generate)
+    expect(sent(generate, 0).prompt.map((p) => p.text ?? '').join('\n')).toContain("Today's date: 2031-02-03.")
   })
 })
 

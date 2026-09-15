@@ -5,7 +5,7 @@ import { ReconcileOutSchema, type ReconcileOut } from '@/ai/schemas'
 import type { Fact, FactAdd } from '@/lib/types'
 
 // The Genkit call is injected, so this exercises the real prompt, the real schema and the real
-// budget — everything except the network. What is under test is what happens AFTER the model
+// thinking level — everything except the network. What is under test is what happens AFTER the model
 // answers: the two relationships between fields that a shape check cannot see, and which one
 // this flow deliberately leaves to the route.
 
@@ -57,7 +57,7 @@ interface SentRequest {
   system?: string
   prompt: { text?: string }[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
 }
 const sent = (generate: ReturnType<typeof returning>, n: number) =>
   generate.mock.calls[n][0] as unknown as SentRequest
@@ -72,12 +72,12 @@ const reasons = (generate: ReturnType<typeof returning>) =>
   correction(generate).split('Why they were rejected:')[1] ?? ''
 
 describe('runReconcileFacts — the request', () => {
-  it('spends 1024 thinking tokens on the schema, at the default temperature', async () => {
+  it('thinks at MEDIUM on the schema, at the default temperature', async () => {
     const generate = returning(out())
     await runReconcileFacts(input(), generate)
 
     const req = sent(generate, 0)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 1024 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
     expect(req.output).toEqual({ schema: ReconcileOutSchema })
     expect(req.system).toContain('You reconcile one fresh extraction against a profile')
   })

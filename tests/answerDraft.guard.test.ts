@@ -5,7 +5,7 @@ import { AnswerDraftOutSchema, type AnswerDraftOut } from '@/ai/schemas'
 import type { Fact, ParsedJob, Question } from '@/lib/types'
 
 // The Genkit call is injected, so this exercises the real prompt, the real schema and the
-// real budget — everything except the network. What is under test is what happens AFTER the
+// real thinking level — everything except the network. What is under test is what happens AFTER the
 // model answers: a limit is arithmetic the model is bad at, and a citation pointing at a fact
 // that does not exist (or at words the answer does not contain) is the exact failure this
 // product exists to prevent. Neither can be enforced by a schema, so both are checked here.
@@ -38,6 +38,7 @@ const input = (constraints: Question['constraints'] = { limit: 10, unit: 'words'
   question: question(constraints),
   parsed,
   jdText: 'Own the ledger and settlement services. Go and PostgreSQL. Minimum 5 years.',
+  today: '2026-09-14',
   facts,
   standardAnswers: {},
   voiceRules: [],
@@ -64,7 +65,7 @@ interface SentRequest {
   system?: string
   prompt: { text?: string }[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingBudget: number } }
+  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
 }
 const sent = (generate: ReturnType<typeof returning>, n: number) =>
   generate.mock.calls[n][0] as unknown as SentRequest
@@ -80,14 +81,24 @@ const reasons = (generate: ReturnType<typeof returning>) =>
   correction(generate).split('Why it was rejected:')[1] ?? ''
 
 describe('runAnswerDraft — the request', () => {
-  it('spends 1024 thinking tokens on the schema, at the default temperature', async () => {
+  it('thinks at MEDIUM on the schema, at the default temperature', async () => {
     const generate = returning(draft())
     await runAnswerDraft(input(), generate)
 
     const req = sent(generate, 0)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingBudget: 1024 } })
+    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
     expect(req.output).toEqual({ schema: AnswerDraftOutSchema })
     expect(req.system).toContain('You draft one job-application answer')
+  })
+
+  it('puts the date it was given in front of the model, on the first call and on the correction', async () => {
+    const generate = returning(draft({ text: words(14) }), draft({ text: words(9) }))
+    await runAnswerDraft({ ...input(), today: '2031-02-03' }, generate)
+
+    for (const n of [0, 1]) {
+      const prompt = sent(generate, n).prompt.map((p) => p.text ?? '').join('\n')
+      expect(prompt).toContain("Today's date: 2031-02-03.")
+    }
   })
 })
 

@@ -1,13 +1,13 @@
-import { FlowOutputError, generateStructured, type GenerateCall } from '@/ai/genkit'
+import { FlowOutputError, generateStructured, type GenerateCall, type ThinkingLevel } from '@/ai/genkit'
 import { buildAssignmentTranscribePrompt } from '@/ai/prompts/assignmentTranscribe'
 import { AssignmentTranscribeOutSchema } from '@/ai/schemas'
 
 /**
- * Nothing. Every other flow in this product weighs something — which gate is unmet, which stage
- * a round is, what a write-up is really saying. This one copies a document out in order, and
- * thinking tokens spent on a copy buy a paraphrase.
+ * This one copies a document out in order. It is set to LOW because the 2026-09-14 evaluation
+ * found no measurable gain from thinking here
+ * (docs/notes/deps.md, "Thinking levels per flow — evaluated 2026-09-14").
  */
-const THINKING_BUDGET = 0
+const THINKING_LEVEL: ThinkingLevel = 'LOW'
 
 /** A take-home brief as a PDF in, its text out — trimmed, and never empty. */
 export async function runAssignmentTranscribe(
@@ -16,7 +16,7 @@ export async function runAssignmentTranscribe(
 ): Promise<{ text: string }> {
   const { system, parts } = buildAssignmentTranscribePrompt(input)
   const out = await generateStructured(
-    { parts, system, schema: AssignmentTranscribeOutSchema, thinkingBudget: THINKING_BUDGET },
+    { parts, system, schema: AssignmentTranscribeOutSchema, thinkingLevel: THINKING_LEVEL },
     generate,
   )
   const text = out.text.trim()

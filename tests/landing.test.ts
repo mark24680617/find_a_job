@@ -104,6 +104,6 @@ describe('Landing — plates, demo, questions', () => {
   it('says where the code is, once, at the bottom', () => {
     const markup = page()
     expect(markup).toContain('href="https://github.com/mark24680617/find_a_job"')
-    expect(markup).toContain('Built with Gemini 3.7 Flash')
+    expect(markup).toContain('Built with Gemini 3.8 Flash')
   })
 })
