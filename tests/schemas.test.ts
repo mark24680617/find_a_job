@@ -12,6 +12,7 @@ import {
   PrepBriefOutSchema,
   ProfileIngestOutSchema,
   ReconcileOutSchema,
+  ResumeFindingsOutSchema,
 } from '@/ai/schemas'
 
 // Fixtures are what a flow would plausibly get back for the Tom Candidate persona. Each
@@ -549,5 +550,38 @@ describe('LetterheadFillOutSchema', () => {
 
   it('rejects an omitted field — an unknown must be spelled null', () => {
     expect(LetterheadFillOutSchema.safeParse(without(valid, 'recipient')).success).toBe(false)
+  })
+})
+
+describe('ResumeFindingsOutSchema', () => {
+  const valid = {
+    findings: [
+      {
+        checkId: 'contact-in-header',
+        quote: 'rowan.pike@example.com',
+        explanation: 'The address sits in the band at the top of the page.',
+        fix: 'Move it into the first line of the body.',
+        askHuman: null,
+      },
+    ],
+  }
+
+  it('accepts a finding with a null askHuman', () => {
+    expect(ResumeFindingsOutSchema.safeParse(valid).success).toBe(true)
+  })
+
+  it('rejects a checkId that is not one', () => {
+    const bad = { findings: [{ ...valid.findings[0], checkId: 'Contact In Header' }] }
+    expect(ResumeFindingsOutSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('rejects an empty quote, which would mark nothing', () => {
+    const bad = { findings: [{ ...valid.findings[0], quote: '' }] }
+    expect(ResumeFindingsOutSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('rejects an askHuman that is simply absent — nullable, never optional', () => {
+    const bad = { findings: [without(valid.findings[0], 'askHuman')] }
+    expect(ResumeFindingsOutSchema.safeParse(bad).success).toBe(false)
   })
 })

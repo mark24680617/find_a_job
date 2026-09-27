@@ -49,7 +49,7 @@ describe('Overview', () => {
   })
 
   it('shows the counts once they are known', () => {
-    const markup = renderToStaticMarkup(createElement(Overview, { user: fakeUser(), usage: { applications: 4, facts: 18 } }))
+    const markup = renderToStaticMarkup(createElement(Overview, { user: fakeUser(), usage: { applications: 4, facts: 18, resumes: 0, reviewsToday: 0 } }))
     expect(markup).toContain('Email and password')
     expect(markup).toMatch(/>4</)
     expect(markup).toMatch(/>18</)

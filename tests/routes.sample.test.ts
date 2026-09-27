@@ -6,15 +6,19 @@ import type { Application, Profile } from '@/lib/types'
 // refuses rather than duplicating or overwriting, and that all three documents land in the
 // caller's own space.
 
-const { requireUser, listApplications, getProfile, setProfile, createApplication, createInterview } =
-  vi.hoisted(() => ({
-    requireUser: vi.fn(),
-    listApplications: vi.fn(),
-    getProfile: vi.fn(),
-    setProfile: vi.fn(),
-    createApplication: vi.fn(),
-    createInterview: vi.fn(),
-  }))
+const {
+  requireUser, listApplications, getProfile, setProfile, createApplication, createInterview,
+  getResume, setResume,
+} = vi.hoisted(() => ({
+  requireUser: vi.fn(),
+  listApplications: vi.fn(),
+  getProfile: vi.fn(),
+  setProfile: vi.fn(),
+  createApplication: vi.fn(),
+  createInterview: vi.fn(),
+  getResume: vi.fn(),
+  setResume: vi.fn(),
+}))
 
 vi.mock('@/lib/auth', () => ({ requireUser }))
 vi.mock('@/lib/db', () => ({
@@ -23,6 +27,9 @@ vi.mock('@/lib/db', () => ({
   setProfile,
   createApplication,
   createInterview,
+  getResume,
+  setResume,
+  RESUME_CURRENT_ID: 'current',
 }))
 
 import { POST } from '@/app/api/sample/route'
@@ -37,6 +44,7 @@ beforeEach(() => {
   requireUser.mockResolvedValue({ uid: 'user-1' })
   listApplications.mockResolvedValue([])
   getProfile.mockResolvedValue(emptyProfile)
+  getResume.mockResolvedValue(null)
   createApplication.mockResolvedValue('app-sample')
   createInterview.mockResolvedValue('round-1')
 })
@@ -77,6 +85,15 @@ describe('POST /api/sample', () => {
     // The round has to hang off the application that was just written, not off a guess.
     expect(createInterview.mock.calls[0][0]).toBe('user-1')
     expect(createInterview.mock.calls[0][1]).toBe('app-sample')
+
+    expect(setResume).toHaveBeenCalledTimes(1)
+    const [rUid, rId, doc] = setResume.mock.calls[0]
+    expect(rUid).toBe('user-1')
+    expect(rId).toBe('current')
+    expect(doc.filename).toBe('tom-candidate-resume.pdf')
+    // The resume goes after the profile and before the interview, as the route comment says.
+    expect(setProfile.mock.invocationCallOrder[0]).toBeLessThan(setResume.mock.invocationCallOrder[0])
+    expect(setResume.mock.invocationCallOrder[0]).toBeLessThan(createInterview.mock.invocationCallOrder[0])
   })
 
   it('writes the application before the profile, so a half-write is still retryable', async () => {
@@ -114,5 +131,18 @@ describe('POST /api/sample', () => {
     expect((await res.json()).error).toMatch(/profile/i)
     expect(setProfile).not.toHaveBeenCalled()
     expect(createApplication).not.toHaveBeenCalled()
+  })
+
+  it('refuses with 409, and writes nothing, when the account already holds a resume of its own', async () => {
+    getResume.mockResolvedValue({ addedAt: '2026-09-20T10:00:00.000Z' })
+
+    const res = await POST(req())
+
+    expect(res.status).toBe(409)
+    expect(getResume).toHaveBeenCalledWith('user-1', 'current')
+    expect(createApplication).not.toHaveBeenCalled()
+    expect(setProfile).not.toHaveBeenCalled()
+    expect(setResume).not.toHaveBeenCalled()
+    expect(createInterview).not.toHaveBeenCalled()
   })
 })

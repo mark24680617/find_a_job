@@ -9,13 +9,19 @@ node_modules
 tsconfig.tsbuildinfo
 
 # Not needed to build or run the service.
+# `scripts` are dev-only tools, and several import `../tests/fixtures`: uploading them without
+# `tests` fails `next build`'s type-check. Leave them in tsconfig so local `tsc` still checks them.
 tests
+scripts
 docs
 .superpowers
 .impeccable.md
 AGENTS.md
 CLAUDE.md
 .DS_Store
+# Local tool state (session memory, language-server cache), never part of the service.
+.remember
+.serena
 
 # Secrets: env vars are set on the service, never baked into the image.
 .env*

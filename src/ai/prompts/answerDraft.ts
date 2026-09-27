@@ -162,7 +162,7 @@ export function voiceRulesPart(rules: string[]): string | null {
  * unanswered askHuman is still a hole, and passing the question along as though it were
  * material is exactly the "write around it" move rule 1 forbids.
  */
-export function humanAnswersPart(items: AskHuman[]): string | null {
+export function humanAnswersPart(items: { question: string; answer?: string }[]): string | null {
   const answered = items.filter((item) => item.answer?.trim())
   if (answered.length === 0) return null
   const blocks = answered.map((item) => `Q: ${item.question}\nA (from the candidate): ${item.answer}`)

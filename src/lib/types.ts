@@ -150,14 +150,20 @@ export interface InterviewRound {
 
 // How much one account holds — what the account page shows its owner and the admin table
 // shows the administrator. Counted, never listed: the panel does not read anyone's data.
-export interface Usage { applications: number; facts: number }
+export interface Usage {
+  applications: number
+  facts: number
+  resumes: number
+  /** Metered resume-tool runs spent today (UTC), read off the day's meter — a count, not a log. */
+  reviewsToday: number
+}
 // One row of the admin table. Dates are ISO on the wire (Firebase's own metadata strings are
 // not); `lastSignInAt` is null for an account that was created but never signed in.
 export interface AdminUser {
   uid: string; email: string; emailVerified: boolean; displayName: string
   provider: string          // 'google.com' | 'password' | anything else, verbatim; '' for none
   createdAt: string; lastSignInAt: string | null
-  disabled: boolean; applications: number; facts: number
+  disabled: boolean; applications: number; facts: number; resumes: number; reviewsToday: number
 }
 
 // ── The interview process map ────────────────────────────────────────────────────────────
@@ -247,3 +253,21 @@ export interface TakeHomeGuide {
   plannedFrom: string                // the brief it was drawn from: assignment.addedAt, or 'notice'
   plannedAt: string                  // ISO
 }
+
+// ── The stored resume ────────────────────────────────────────────────────────────────────
+// Declared in `src/lib/resume/types.ts`, beside the pure layer that produces them, and named
+// here so every consumer reaches the domain types through one module. A subcollection rather
+// than a field on the profile, because three of six `setProfile` writers rebuild the profile
+// from a fixed key list and would silently delete one — the hazard named at line 43 above.
+export type {
+  StoredResume,
+  BulletJudgement,
+  DiagnoseResult,
+  GapsResult,
+  AcceptedRewrite,
+  AnsweredAsk,
+  SnippetCheck,
+  CheckResult,
+  Extracted,
+  Judge, // R39 — D7b and every consumer reach it here, beside the shapes that carry it
+} from '@/lib/resume/types'

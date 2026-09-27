@@ -25,6 +25,8 @@ const user = (over: Partial<AdminUser>): AdminUser => ({
   disabled: false,
   applications: 4,
   facts: 18,
+  resumes: 0,
+  reviewsToday: 0,
   ...over,
 })
 

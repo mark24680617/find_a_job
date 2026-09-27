@@ -9,12 +9,14 @@
  */
 import { z } from 'genkit'
 import type {
+  AcceptedRewrite,
   ArtifactScope,
   Assignment,
   Changeset,
   Citation,
   ClarifyOption,
   ClarifyQuestion,
+  DiagnoseResult,
   Fact,
   FactAdd,
   FactSkip,
@@ -252,6 +254,27 @@ export const MockDebriefOutSchema = z.object({
  */
 export const AssignmentTranscribeOutSchema = z.object({ text: z.string() })
 
+/**
+ * resumeFindings: the failing checks explained, and nothing else.
+ *
+ * No `z.number()` anywhere: D1 puts every number on this feature in code, over judgements the
+ * product can show the user. The `checkId` regex is the same shape `checkSources.ts` keys on, and
+ * the flow's guard is what makes it one of the failures actually handed over — the regex only says
+ * it looks like an id. `askHuman` is `.nullable()`, never `.optional()`: `z.string().nullable()`
+ * survives the round trip and an absent key does not (docs/notes/deps.md:124).
+ */
+export const ResumeFindingsOutSchema = z.object({
+  findings: z.array(
+    z.object({
+      checkId: z.string().regex(/^[a-z][a-z0-9-]+$/, 'a check id, like contact-in-header'),
+      quote: z.string().min(1),
+      explanation: z.string().min(1),
+      fix: z.string().min(1),
+      askHuman: z.object({ question: z.string().min(1), why: z.string().min(1) }).nullable(),
+    }),
+  ),
+})
+
 export type ProfileIngestOut = z.infer<typeof ProfileIngestOutSchema>
 export type JobInterpretOut = z.infer<typeof JobInterpretOutSchema>
 export type FormParseOut = z.infer<typeof FormParseOutSchema>
@@ -264,6 +287,7 @@ export type PrepBriefOut = z.infer<typeof PrepBriefOutSchema>
 export type MockTurnOut = z.infer<typeof MockTurnOutSchema>
 export type MockDebriefOut = z.infer<typeof MockDebriefOutSchema>
 export type AssignmentTranscribeOut = z.infer<typeof AssignmentTranscribeOutSchema>
+export type ResumeFindingsOut = z.infer<typeof ResumeFindingsOutSchema>
 
 /** `true` only when the two types are assignable in both directions. */
 type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
@@ -326,6 +350,10 @@ export type SchemaGuards = [
   Assert<Mutual<Omit<TakeHomeSynthesizeOut['brief'], 'timeLimit'>, Omit<TakeHomeGuide['brief'], 'timeLimit'>>>,
   Assert<Mutual<TakeHomeSynthesizeOut['brief']['timeLimit'], NonNullable<TakeHomeGuide['brief']['timeLimit']> | null>>,
   Assert<Mutual<TakeHomeSynthesizeOut['plan'][number], Omit<TakeHomeGuide['plan'][number], 'budget'> & { budget: string | null }>>,
+  // The findings are stored on DiagnoseResult exactly as the flow returned them: reviewedFrom,
+  // judge and ranAt are the route's, and nothing inside a finding is.
+  Assert<Mutual<ResumeFindingsOut['findings'], DiagnoseResult['findings']>>,
+  Assert<Mutual<BulletRewriteOut['rewrites'][number]['citations'], AcceptedRewrite['citations']>>,
 ]
 
 /**
@@ -455,3 +483,33 @@ export const LetterheadFillOutSchema = z.object({
   companyAddress: FillSchema,
 })
 export type LetterheadFillOut = z.infer<typeof LetterheadFillOutSchema>
+
+/**
+ * bulletRewrite: the failing bullets in, a PROPOSAL out. Nothing here is stored until the
+ * candidate accepts it, which is `reconcileFacts`' disposition and for the same reason — this
+ * is the candidate's document and the model does not get to edit it.
+ *
+ * `factId` and `resumeSpan` are both nullable and never both absent: a citation names a fact, a
+ * span of the stored resume, or both, and the flow refuses one that names neither. `shape` is
+ * the honest set of answers to a missing Y — a range, a frequency or a scale — and it is an
+ * enum rather than free text because the page renders a field per shape. `skipped` carries its
+ * reason, as `FactSkip` does, so every bullet handed over is accounted for on screen rather
+ * than quietly dropped.
+ */
+export const BulletRewriteOutSchema = z.object({
+  rewrites: z.array(z.object({
+    bulletId: z.string().regex(/^b\d+$/, 'a bullet id from the resume, like b7'),
+    text: z.string().min(1),
+    citations: z.array(z.object({
+      claimSpan: z.string().min(1),      // verbatim substring of `text`
+      factId: z.string().nullable(),     // a fact in the bank
+      resumeSpan: z.string().nullable(), // verbatim substring of the stored resume text
+    })),
+    askHuman: z.array(z.object({
+      question: z.string().min(1), why: z.string().min(1),
+      shape: z.enum(['range', 'frequency', 'scale']).nullable(),   // the honest shapes for a missing Y
+    })),
+    skipped: z.object({ reason: z.string().min(1) }).nullable(),   // skips carry a reason, as reconcileFacts does
+  })),
+})
+export type BulletRewriteOut = z.infer<typeof BulletRewriteOutSchema>

@@ -10,6 +10,7 @@ import type {
   Question,
   QuestionKind,
   RoundType,
+  StoredResume,
 } from '@/lib/types'
 
 // These fixtures are the assertion: they only compile if the domain types accept the
@@ -30,6 +31,49 @@ const ROUND_TYPES: RoundType[] = [
   'other',
 ]
 const QUESTION_KINDS: QuestionKind[] = ['cover-letter']
+
+// A stored resume with every derived artifact absent — the shape a fresh upload writes. It is
+// the assertion: it only compiles if `@/lib/types` really re-exports the resume layer's types,
+// which is how `src/ai/schemas.ts` will reach them. A compile-time pin (R53): `npx tsc --noEmit`
+// is what goes red without the re-export, and the `it` below only reads the literal back.
+const RESUME: StoredResume = {
+  addedAt: '2026-09-21T09:00:00.000Z',
+  filename: 'resume.pdf',
+  bytes: 48_112,
+  text: 'Dana Ellery\nEXPERIENCE\nSenior Backend Engineer — Marram Systems 2021 – Present\n• Cut checkout latency from 900 ms to 180 ms',
+  lines: [
+    { page: 1, x: 72, y: 720, size: 18, font: 'g_d0_f1', text: 'Dana Ellery' },
+    { page: 1, x: 72, y: 690, size: 11, font: 'g_d0_f2', text: 'EXPERIENCE' },
+    // A white-filled run: stored at size 0, with `hiddenBy` naming why (R9).
+    { page: 1, x: 72, y: 300, size: 0, hiddenBy: 'colour', font: 'g_d0_f2', text: 'Principal Architect' },
+  ],
+  sections: [{ name: 'experience', fromLine: 1, toLine: 1 }],
+  entries: [
+    {
+      org: 'Marram Systems',
+      role: 'Senior Backend Engineer',
+      fromRaw: '2021',
+      toRaw: 'Present',
+      // Resolved by `extractResume` against the upload's day (Task B4, R3). Only `structure()`
+      // leaves them null; stored, null means a side could not be read (D4).
+      from: '2021',
+      to: '2026-09',
+      bulletIds: ['b1'],
+      bulletLines: [1],
+    },
+  ],
+  bullets: [{ id: 'b1', entryIndex: 0, lines: [1], text: 'Cut checkout latency from 900 ms to 180 ms' }],
+  language: 'en',
+}
+
+describe('StoredResume', () => {
+  it('reads back through @/lib/types (a compile-time pin: tsc is the red phase)', () => {
+    expect(RESUME.bullets.map((b) => b.id)).toEqual(['b1'])
+    expect(RESUME.entries[0].to).toBe('2026-09')
+    expect(RESUME.lines.filter((l) => l.size === 0).map((l) => l.hiddenBy)).toEqual(['colour'])
+    expect(RESUME.diagnose).toBeUndefined()
+  })
+})
 
 // Exhaustive over QuestionKind, for the same reason as AppStatus below: a second kind of
 // question would be a second thing the pane, the list and the routes have to branch on, and

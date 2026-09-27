@@ -24,6 +24,7 @@ import { firstPaint } from '@/lib/landing/firstPaint'
 const NAV = [
   { href: '/', label: 'Dashboard' },
   { href: '/profile', label: 'Profile' },
+  { href: '/profile/resume', label: 'Resume' },
   { href: '/applications/new', label: 'New Application' },
   { href: '/account', label: 'Account' },
 ] as const
@@ -33,6 +34,18 @@ const ADMIN_NAV = { href: '/admin', label: 'Admin' } as const
 /** The links this person gets. Admin is drawn from the token's claim; the server is the guard. */
 export function navItems(isAdmin: boolean): { href: string; label: string }[] {
   return isAdmin ? [...NAV, ADMIN_NAV] : [...NAV]
+}
+
+/**
+ * The one nav entry the path sits under: the longest href the path equals or is nested under.
+ * Longest, because `/profile/resume` is under `/profile` too, and two links carrying
+ * `aria-current="page"` tell a screen reader it is on two pages at once.
+ */
+export function activeHref(pathname: string, items: { href: string }[]): string | undefined {
+  return items
+    .map((i) => i.href)
+    .filter((h) => (h === '/' ? pathname === '/' : pathname === h || pathname.startsWith(`${h}/`)))
+    .sort((a, b) => b.length - a.length)[0]
 }
 
 /**
@@ -125,6 +138,9 @@ export function AppShell({ children, signedOut, returning = false }: Props) {
   // unreachable: 'app' is only returned with a user; this keeps the type honest.
   if (!user) return null
 
+  const items = navItems(isAdmin)
+  const current = activeHref(pathname, items)
+
   return (
     <UserContext.Provider value={user}>
       <UnsavedContext.Provider value={setUnsaved}>
@@ -141,8 +157,8 @@ export function AppShell({ children, signedOut, returning = false }: Props) {
             </Link>
 
             <nav aria-label="Main" className="flex items-center gap-6 text-sm">
-              {navItems(isAdmin).map(({ href, label }) => {
-                const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+              {items.map(({ href, label }) => {
+                const active = href === current
                 return (
                   <Link
                     key={href}

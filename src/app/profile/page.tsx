@@ -12,6 +12,7 @@ import { apiFetch } from '@/lib/apiFetch'
 import { MAX_PDF_BYTES } from '@/lib/assignment'
 import { blankContact, differsBesideContact, mergeContact, readContact } from '@/lib/profileMerge'
 import { factFromGapAnswer, visibleGaps } from '@/lib/profileView'
+import { readPdfAsBase64 } from '@/lib/readPdf'
 import { readable } from '@/lib/readable'
 import type {
   Changeset,
@@ -101,16 +102,6 @@ function readProfile(profile: Profile): Profile {
 /** Whether two contacts say the same four things — the page's test for "nothing changed". */
 function sameContact(a: ProfileContact, b: ProfileContact): boolean {
   return (Object.keys(a) as (keyof ProfileContact)[]).every((key) => a[key] === b[key])
-}
-
-/** Strips the `data:application/pdf;base64,` prefix the FileReader adds. */
-function readPdfAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () => reject(new Error('That file could not be read.'))
-    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '')
-    reader.readAsDataURL(file)
-  })
 }
 
 export default function ProfilePage() {

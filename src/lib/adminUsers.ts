@@ -42,6 +42,8 @@ export function toAdminUser(record: AuthRecord, usage: Usage): AdminUser {
     disabled: record.disabled,
     applications: usage.applications,
     facts: usage.facts,
+    resumes: usage.resumes,
+    reviewsToday: usage.reviewsToday,
   }
 }
 

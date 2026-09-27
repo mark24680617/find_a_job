@@ -29,10 +29,28 @@ interface Props {
    * still worth typing and is kept either way.
    */
   held?: string
+  /**
+   * The heading's DOM id, for a page that holds more than one queue. The resume page holds up
+   * to three — diagnose, gaps and rewrite — and two elements answering to the same id give the
+   * second queue the first one's accessible name.
+   */
+  headingId?: string
+  /**
+   * Whether answering re-drafts, as in the application draft, or only saves, as on the resume
+   * page, where the next rewrite reads the answers.
+   */
+  action?: 'redraft' | 'save'
   onSubmit: (answers: { question: string; answer: string }[]) => void
 }
 
-export function AskHumanQueue({ asks, busy, held, onSubmit }: Props) {
+export function AskHumanQueue({
+  asks,
+  busy,
+  held,
+  headingId = 'ask-human-heading',
+  action = 'redraft',
+  onSubmit,
+}: Props) {
   const [answers, setAnswers] = useState<string[]>(() => asks.map((a) => a.answer ?? ''))
 
   const canSubmit = !busy && held === undefined && answers.some((a) => a.trim() !== '')
@@ -45,22 +63,23 @@ export function AskHumanQueue({ asks, busy, held, onSubmit }: Props) {
   }
 
   return (
-    <section aria-labelledby="ask-human-heading" className="mt-10">
+    <section aria-labelledby={headingId} className="mt-10">
       <h3
-        id="ask-human-heading"
+        id={headingId}
         className="text-xs font-medium uppercase tracking-[0.12em] text-ink-3"
       >
         The agent needs you
       </h3>
       <p className="mt-1 max-w-[62ch] text-sm leading-relaxed text-ink-2">
-        It won’t guess these. Answer what you can, then draft again — the rest of the answer is
-        written around what you tell it here.
+        {action === 'save'
+          ? 'It won’t guess these. Answer what you can — each answer is saved with your resume, and the next rewrite reads it.'
+          : 'It won’t guess these. Answer what you can, then draft again — the rest of the answer is written around what you tell it here.'}
       </p>
 
       <fieldset disabled={busy} aria-busy={busy} className="mt-4 grid min-w-0 gap-4">
         {asks.map((ask, i) => {
           const answered = (answers[i] ?? '').trim() !== ''
-          const inputId = `ask-${i}`
+          const inputId = headingId === 'ask-human-heading' ? `ask-${i}` : `${headingId}-${i}`
           return (
             <div key={`${ask.question}-${i}`} className="border border-amber bg-amber-soft px-5 py-4">
               <div className="flex items-baseline justify-between gap-4">
@@ -92,10 +111,15 @@ export function AskHumanQueue({ asks, busy, held, onSubmit }: Props) {
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <button type="button" className="btn btn-primary" disabled={!canSubmit} onClick={submit}>
-            {busy ? 'Re-drafting…' : 'Answer & re-draft'}
+            {action === 'save'
+              ? busy ? 'Saving…' : 'Save answers'
+              : busy ? 'Re-drafting…' : 'Answer & re-draft'}
           </button>
           <p className="max-w-[52ch] text-sm text-ink-3">
-            {held ?? 'Your answers are kept and folded into the next draft.'}
+            {held ??
+              (action === 'save'
+                ? 'Your answers are kept, and the next rewrite reads them.'
+                : 'Your answers are kept and folded into the next draft.')}
           </p>
         </div>
       </fieldset>

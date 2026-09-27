@@ -31,6 +31,25 @@ The empty dashboard has a **Load sample data** button. It writes one invented ca
 invented posting and one booked interview into your own account, so the product can be seen full
 without pasting a real resume first.
 
+There is a **Resume** page at `/profile/resume`. Upload the PDF you actually send to employers and
+it is stored under your account, then checked three ways, each one triggered on its own: Diagnose
+runs a suite of deterministic checks — text layer, columns, contact details in a header, dates,
+placeholder residue, hidden text — each with the vendor that documents it named beside the verdict,
+and then asks a yes/no judge four fixed questions per bullet. Gaps reads the skills your own saved
+postings and O*NET's data for one occupation ask for, and sorts them into three buckets. Rewrite
+proposes a replacement for a bullet that failed, with every claim cited back to a fact or to a
+span of the resume, and writes nothing until you accept it. Every count on that page is `.length`
+over the rows beside it; there is no score and no percentage anywhere on it.
+
+The page says this, and so does this README:
+
+> Your resume text goes to Google's Gemini API to produce what is on this page. When a TypeSafe
+> API key is configured, the same text also goes to TypeSafe's Jev API for the yes/no judgements.
+> TypeSafe's terms say it does not train on what you send and that the output is yours; the same
+> terms reserve ongoing rights over telemetry derived from your requests, and zero-data-retention
+> is an enterprise-only option this deployment does not have. Your resume is stored under your
+> account in Firestore, and you can delete it here.
+
 ---
 
 ## Running it locally
@@ -39,7 +58,7 @@ About ninety seconds, most of it waiting on `npm install`.
 
 ```sh
 git clone <repository-url> find-a-job && cd find-a-job
-cp .env.example .env.local          # then fill in the five values below
+cp .env.example .env.local          # then fill in the six values below
 npm install
 gcloud auth application-default login
 npm run dev                         # http://localhost:3000
@@ -50,12 +69,19 @@ npm run dev                         # http://localhost:3000
 | Variable | Where to get it |
 |---|---|
 | `GEMINI_API_KEY` | <https://aistudio.google.com/apikey> — the Gemini Developer API; the free tier is enough |
+| `TYPESAFE_API_KEY` | *optional* — the yes/no judge. Without it every judgement falls back to Gemini and each row on the Resume page says which judge answered it. With it, JEV is asked only once `CUTS_MEASURED` in `src/lib/resume/cuts.ts` is `true`, which the owner's key-arrival follow-up sets |
+| `RESUME_TOOLS_ENABLED` | `true` turns the Resume page's three tools on. Anything else, unset included, answers 503 on upload and every tool route — it is the kill switch, and it is read on every request so it can be flipped without a rebuild |
+| `RESUME_DEPLOYMENT_CEILING` | *optional* — metered units a day across the whole deployment before every tool refuses; `200` when unset. It limits units, not dollars. A unit is one upload, one rewrite bullet, one Gaps run, or one Diagnose run over up to 20 visible bullets. Diagnose makes one judge call a bullet plus one findings call a run; Gaps makes one judge call per 64 skills in the role family, each carrying the resume's visible text. Only the rewrite bullet's cost has a worked ceiling (four model calls); the findings and Gaps calls are not yet measured, so no dollar figure bounds the day |
 | `NEXT_PUBLIC_FB_API_KEY` | Firebase console → Project settings → Your apps → Web app → SDK setup |
 | `NEXT_PUBLIC_FB_AUTH_DOMAIN` | same panel — `your-project.firebaseapp.com` |
 | `NEXT_PUBLIC_FB_PROJECT_ID` | same panel |
 | `NEXT_PUBLIC_FB_APP_ID` | same panel — `1:000000000000:web:…` |
 | `REDDIT_CLIENT_ID` | *optional, for Reddit write-ups* — <https://www.reddit.com/prefs/apps>, "create app" → **installed app**. Reddit refuses its public JSON to servers, so without an id the research reads no Reddit at all |
 | `REDDIT_CLIENT_SECRET` | *optional* — leave unset for an installed app, which has none |
+
+Two dependencies on this page are pinned to an exact version rather than a range: `pdfjs-dist`
+`6.3.289`, which parses the uploaded PDF and is therefore a security dependency, and `server-only`
+`0.0.1`, which makes a client import of the judge a build failure rather than a runtime surprise.
 
 Two things have to be switched on in the Firebase project itself: **Firestore** in Native mode,
 and the **Email/password** and **Google** sign-in providers under Authentication. `localhost` is
@@ -66,7 +92,7 @@ login` is what gives the server side its Firestore credentials locally; on Cloud
 code picks up the runtime service account instead.
 
 ```sh
-npm test          # 1576 tests
+npm test          # 2181 tests
 npm run build     # production build, typecheck included
 ```
 
@@ -86,11 +112,15 @@ Sign out and back in to pick the claim up now; otherwise it arrives within the h
 
 The service runs on Cloud Run from source — no Dockerfile; buildpacks handle it. The four
 `NEXT_PUBLIC_*` values must be passed as *build* env vars as well as runtime ones (Next.js inlines
-them into the client bundle at build time). One line:
+them into the client bundle at build time). The other four are runtime-only and never go in
+the build. `--set-env-vars` replaces every variable the service had, so the command carries all
+eight: an empty value is safe for `TYPESAFE_API_KEY` (the judge falls back to Gemini) and
+`RESUME_DEPLOYMENT_CEILING` (200), but an empty `RESUME_TOOLS_ENABLED` switches the resume tools
+off. One line:
 
 ```sh
 set -a; . ./.env.local; set +a && gcloud run deploy find-a-job --source . --region us-west1 --allow-unauthenticated \
-  --set-env-vars "^##^GEMINI_API_KEY=${GEMINI_API_KEY}##NEXT_PUBLIC_FB_API_KEY=${NEXT_PUBLIC_FB_API_KEY}##NEXT_PUBLIC_FB_AUTH_DOMAIN=${NEXT_PUBLIC_FB_AUTH_DOMAIN}##NEXT_PUBLIC_FB_PROJECT_ID=${NEXT_PUBLIC_FB_PROJECT_ID}##NEXT_PUBLIC_FB_APP_ID=${NEXT_PUBLIC_FB_APP_ID}" \
+  --set-env-vars "^##^GEMINI_API_KEY=${GEMINI_API_KEY}##TYPESAFE_API_KEY=${TYPESAFE_API_KEY}##RESUME_TOOLS_ENABLED=${RESUME_TOOLS_ENABLED}##RESUME_DEPLOYMENT_CEILING=${RESUME_DEPLOYMENT_CEILING}##NEXT_PUBLIC_FB_API_KEY=${NEXT_PUBLIC_FB_API_KEY}##NEXT_PUBLIC_FB_AUTH_DOMAIN=${NEXT_PUBLIC_FB_AUTH_DOMAIN}##NEXT_PUBLIC_FB_PROJECT_ID=${NEXT_PUBLIC_FB_PROJECT_ID}##NEXT_PUBLIC_FB_APP_ID=${NEXT_PUBLIC_FB_APP_ID}" \
   --update-build-env-vars "^##^NEXT_PUBLIC_FB_API_KEY=${NEXT_PUBLIC_FB_API_KEY}##NEXT_PUBLIC_FB_AUTH_DOMAIN=${NEXT_PUBLIC_FB_AUTH_DOMAIN}##NEXT_PUBLIC_FB_PROJECT_ID=${NEXT_PUBLIC_FB_PROJECT_ID}##NEXT_PUBLIC_FB_APP_ID=${NEXT_PUBLIC_FB_APP_ID}"
 ```
 
@@ -127,7 +157,7 @@ flowchart TB
   subgraph run ["Next.js on Cloud Run"]
     API["Route handlers<br/>every one calls requireUser first"]
     ADP["Adapters<br/>ashby · greenhouse · lever · generic"]
-    FLOWS["Genkit flows<br/>profileIngest · reconcileFacts · jobInterpret<br/>formParse · clarifyDraft · answerDraft<br/>feedbackDistill · interviewInterpret · prepBrief"]
+    FLOWS["Genkit flows<br/>profileIngest · reconcileFacts · jobInterpret<br/>formParse · clarifyDraft · answerDraft<br/>feedbackDistill · interviewInterpret · prepBrief<br/>resumeFindings · bulletRewrite · judgeFallback"]
   end
 
   FS["Firestore<br/>users/uid/applications/id/interviews/id"]
@@ -147,8 +177,8 @@ flowchart TB
 The client never reads Firestore. It holds a Firebase Auth session, and every piece of data on
 screen arrived through a route handler that verified the ID token first.
 
-**Built with:** Gemini 3.8 Flash · Genkit · Cloud Run · Firestore · Firebase Auth · Next.js 16 ·
-TypeScript · Tailwind
+**Built with:** Gemini 3.8 Flash · Genkit · TypeSafe Jev · Cloud Run · Firestore · Firebase Auth ·
+Next.js 16 · TypeScript · Tailwind
 
 ---
 

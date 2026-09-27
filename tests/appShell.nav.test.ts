@@ -12,15 +12,37 @@ vi.mock('@/lib/firebase/client', () => ({
   readAdminClaim: vi.fn(),
 }))
 
-import { AppShell, navItems } from '@/components/AppShell'
+import { AppShell, activeHref, navItems } from '@/components/AppShell'
 
 describe('navItems', () => {
-  it('shows Account to everyone, after New Application', () => {
-    expect(navItems(false).map((n) => n.label)).toEqual(['Dashboard', 'Profile', 'New Application', 'Account'])
+  it('puts Resume after Profile, and keeps Account last for everyone', () => {
+    expect(navItems(false).map((n) => n.label)).toEqual([
+      'Dashboard', 'Profile', 'Resume', 'New Application', 'Account',
+    ])
     expect(navItems(false).at(-1)).toEqual({ href: '/account', label: 'Account' })
   })
   it('adds Admin last, only for the administrator', () => {
-    expect(navItems(true).map((n) => n.href)).toEqual(['/', '/profile', '/applications/new', '/account', '/admin'])
+    expect(navItems(true).map((n) => n.href)).toEqual([
+      '/', '/profile', '/profile/resume', '/applications/new', '/account', '/admin',
+    ])
+  })
+})
+
+describe('activeHref', () => {
+  it('marks only the nested entry on /profile/resume', () => {
+    expect(activeHref('/profile/resume', navItems(false))).toBe('/profile/resume')
+  })
+  it('marks Profile on /profile', () => {
+    expect(activeHref('/profile', navItems(false))).toBe('/profile')
+  })
+  it('marks Dashboard only on /', () => {
+    expect(activeHref('/', navItems(false))).toBe('/')
+  })
+  it('marks nothing on an application page, as before', () => {
+    expect(activeHref('/applications/abc123', navItems(false))).toBeUndefined()
+  })
+  it('marks Admin on /admin for the administrator', () => {
+    expect(activeHref('/admin', navItems(true))).toBe('/admin')
   })
 })
 

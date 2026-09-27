@@ -18,7 +18,7 @@ const record = {
 
 describe('toAdminUser', () => {
   it('maps the record and attaches the usage counts', () => {
-    expect(toAdminUser(record, { applications: 5, facts: 12 })).toEqual({
+    expect(toAdminUser(record, { applications: 5, facts: 12, resumes: 1, reviewsToday: 0 })).toEqual({
       uid: 'u1',
       email: 'mark@example.com',
       emailVerified: false,
@@ -29,13 +29,15 @@ describe('toAdminUser', () => {
       disabled: false,
       applications: 5,
       facts: 12,
+      resumes: 1,
+      reviewsToday: 0,
     } satisfies AdminUser)
   })
 
   it('takes the first linked provider, and empty strings for what Firebase left unset', () => {
     const google = toAdminUser(
       { ...record, email: undefined, displayName: undefined, providerData: [{ providerId: 'google.com' }, { providerId: 'password' }] },
-      { applications: 0, facts: 0 },
+      { applications: 0, facts: 0, resumes: 0, reviewsToday: 0 },
     )
     expect(google.provider).toBe('google.com')
     expect(google.email).toBe('')
@@ -43,13 +45,13 @@ describe('toAdminUser', () => {
   })
 
   it('reports never-signed-in as null rather than an empty string or epoch', () => {
-    const never = toAdminUser({ ...record, metadata: { creationTime: record.metadata.creationTime } }, { applications: 0, facts: 0 })
+    const never = toAdminUser({ ...record, metadata: { creationTime: record.metadata.creationTime } }, { applications: 0, facts: 0, resumes: 0, reviewsToday: 0 })
     expect(never.lastSignInAt).toBeNull()
     expect(never.createdAt).toBe('2026-08-28T02:51:50.000Z')
   })
 
   it('has no provider when no provider is linked', () => {
-    expect(toAdminUser({ ...record, providerData: [] }, { applications: 0, facts: 0 }).provider).toBe('')
+    expect(toAdminUser({ ...record, providerData: [] }, { applications: 0, facts: 0, resumes: 0, reviewsToday: 0 }).provider).toBe('')
   })
 })
 
@@ -80,6 +82,8 @@ const user = (over: Partial<AdminUser>): AdminUser => ({
   disabled: false,
   applications: 0,
   facts: 0,
+  resumes: 0,
+  reviewsToday: 0,
   ...over,
 })
 

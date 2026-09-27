@@ -1,6 +1,8 @@
 import { FieldValue } from 'firebase-admin/firestore'
 import { adminAuth, adminDb } from '@/lib/firebase/admin'
-import type { Application, Assignment, InterviewRound, Profile, Usage } from '@/lib/types'
+import { utcToday } from '@/lib/dates'
+import { reviewsToday } from '@/lib/resume/meter'
+import type { AcceptedRewrite, AnsweredAsk, Application, Assignment, InterviewRound, Profile, StoredResume, Usage } from '@/lib/types'
 
 // Firestore accessors. Everything is scoped under users/{uid}, so a caller that has
 // authenticated a uid cannot reach another user's data by construction. Mapping only —
@@ -9,6 +11,7 @@ import type { Application, Assignment, InterviewRound, Profile, Usage } from '@/
 const userDoc = (uid: string) => adminDb.collection('users').doc(uid)
 const appsCol = (uid: string) => userDoc(uid).collection('applications')
 const roundsCol = (uid: string, appId: string) => appsCol(uid).doc(appId).collection('interviews')
+const resumesCol = (uid: string) => userDoc(uid).collection('resumes')
 
 const emptyProfile = (): Profile => ({ facts: [], standardAnswers: {}, voiceRules: [], gaps: [] })
 
@@ -55,6 +58,90 @@ export async function updateApplication(
  */
 export async function deleteApplication(uid: string, id: string): Promise<void> {
   await adminDb.recursiveDelete(appsCol(uid).doc(id))
+}
+
+/**
+ * v1 writes one resume per user, at a fixed id. The `{id}` segment stays so holding several
+ * later is a change without a migration, and a per-resume delete is a delete of that id.
+ */
+export const RESUME_CURRENT_ID = 'current'
+
+/** Missing document reads back as null, as getApplication does. */
+export async function getResume(uid: string, id: string): Promise<StoredResume | null> {
+  const snap = await resumesCol(uid).doc(id).get()
+  const data = snap.data()
+  return data ? (data as StoredResume) : null
+}
+
+/** A whole-document write: an upload replaces text and structure in place and bumps addedAt. */
+export async function setResume(uid: string, id: string, doc: StoredResume): Promise<void> {
+  await resumesCol(uid).doc(id).set(doc)
+}
+
+/**
+ * Firestore `update()`: a partial merge, not an upsert — throws NOT_FOUND if the doc is missing.
+ * The patch type is widened because removing a stale artifact passes `FieldValue.delete()` under
+ * a `StoredResume` key, which `Partial<StoredResume>` cannot express — and `undefined` could not
+ * have said it, because `ignoreUndefinedProperties` is set and the key would be silently kept.
+ * Same reason `replaceAssignment` exists rather than going through `updateInterview`.
+ */
+export async function patchResume(
+  uid: string,
+  id: string,
+  patch: Partial<StoredResume> | Record<string, unknown>,
+): Promise<void> {
+  await resumesCol(uid).doc(id).update(patch)
+}
+
+/**
+ * One answered ask appended in a transaction, so the duplicate and count checks hold against a
+ * second tab: a plain read-then-write would let two appends read the same list and keep only the
+ * later one, while both callers are told it was saved. The duplicate check runs before the count
+ * check, so a repeat of an answered ask is still reported as already saved when the list is full.
+ */
+export async function appendResumeAsk(
+  uid: string,
+  id: string,
+  ask: AnsweredAsk,
+  maxAsks: number,
+): Promise<'appended' | 'missing' | 'duplicate' | 'full'> {
+  return adminDb.runTransaction(async (tx) => {
+    const ref = resumesCol(uid).doc(id)
+    const snap = await tx.get(ref)
+    if (!snap.exists) return 'missing'
+    const asks = (snap.data() as StoredResume).asks ?? []
+    if (asks.some((a) => a.askId === ask.askId)) return 'duplicate'
+    if (asks.length >= maxAsks) return 'full'
+    tx.update(ref, { asks: [...asks, ask] })
+    return 'appended'
+  })
+}
+
+/**
+ * One accepted rewrite appended in a transaction, with the basis check on the same read. A plain
+ * read-then-write would let two tabs accepting different bullets each read the same list and keep
+ * only their own, while both callers are told it was saved; and an upload landing between the
+ * read and the write would take a rewrite written against the old text.
+ */
+export async function appendResumeRewrite(
+  uid: string,
+  id: string,
+  rewrite: AcceptedRewrite,
+): Promise<'appended' | 'missing' | 'moved'> {
+  return adminDb.runTransaction(async (tx) => {
+    const ref = resumesCol(uid).doc(id)
+    const snap = await tx.get(ref)
+    if (!snap.exists) return 'missing'
+    const doc = snap.data() as StoredResume
+    if (doc.addedAt !== rewrite.reviewedFrom) return 'moved'
+    tx.update(ref, { rewrites: [...(doc.rewrites ?? []), rewrite] })
+    return 'appended'
+  })
+}
+
+/** The document and its `practice` subcollection, which a document delete would orphan. */
+export async function deleteResume(uid: string, id: string): Promise<void> {
+  await adminDb.recursiveDelete(resumesCol(uid).doc(id))
 }
 
 export async function listInterviews(uid: string, appId: string): Promise<InterviewRound[]> {
@@ -119,11 +206,24 @@ export async function replaceAssignment(
  * aggregate, and the length of the facts array on the profile document. This is what the
  * admin panel is allowed to know about anyone — numbers, not content. The qualifier is on
  * what leaves the server: the profile document is read whole, because Firestore has no
- * aggregate over an array field, and only its length is returned.
+ * aggregate over an array field, and only its length is returned. The resumes subcollection is
+ * an aggregate like the applications, and today's metered runs are the day's meter summed —
+ * reported here, enforced only by the permit transaction (src/lib/resume/meter.ts).
  */
 export async function usageFor(uid: string): Promise<Usage> {
-  const [apps, profile] = await Promise.all([appsCol(uid).count().get(), getProfile(uid)])
-  return { applications: apps.data().count, facts: profile.facts.length }
+  const day = utcToday()
+  const [apps, resumes, profile, reviews] = await Promise.all([
+    appsCol(uid).count().get(),
+    resumesCol(uid).count().get(),
+    getProfile(uid),
+    reviewsToday(uid, day),
+  ])
+  return {
+    applications: apps.data().count,
+    facts: profile.facts.length,
+    resumes: resumes.data().count,
+    reviewsToday: reviews,
+  }
 }
 
 /**

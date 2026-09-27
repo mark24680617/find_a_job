@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The Remember plugin's scratch files. Git ignores them through .remember/.gitignore,
+    // which flat config does not read.
+    ".remember/**",
   ]),
 ]);
 
