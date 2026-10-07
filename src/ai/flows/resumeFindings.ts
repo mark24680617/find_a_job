@@ -132,7 +132,6 @@ export async function runResumeFindings(
         system,
         schema: ResumeFindingsOutSchema,
         thinkingLevel: THINKING_LEVEL,
-        temperature: 0,
       },
       generate,
     )

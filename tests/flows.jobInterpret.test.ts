@@ -28,7 +28,7 @@ interface SentRequest {
   system?: string
   prompt: { text?: string }[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
+  config: { thinkingConfig: { thinkingLevel: string } }
 }
 
 describe('runJobInterpret', () => {
@@ -37,12 +37,12 @@ describe('runJobInterpret', () => {
     await expect(runJobInterpret({ jdText: 'a posting', today: '2026-09-14', facts }, generate)).resolves.toEqual(out)
   })
 
-  it('thinks at MEDIUM, at temperature 0, against the posting schema', async () => {
+  it('thinks at MEDIUM against the posting schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: out }))
     await runJobInterpret({ jdText: 'a posting', today: '2026-09-14', facts }, generate)
 
     const req = generate.mock.calls[0][0] as unknown as SentRequest
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
+    expect(req.config).toEqual({ thinkingConfig: { thinkingLevel: 'MEDIUM' } })
     expect(req.output).toEqual({ schema: JobInterpretOutSchema })
     expect(req.system).toContain('You interpret one job posting')
   })

@@ -16,7 +16,7 @@ interface SentRequest {
   system?: string
   prompt: { text?: string }[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
+  config: { thinkingConfig: { thinkingLevel: string } }
 }
 
 const sent = (generate: { mock: { calls: unknown[][] } }) => generate.mock.calls[0][0] as SentRequest
@@ -76,12 +76,12 @@ const turnInput: MockTurnInput = {
 const aQuestion = { say: 'Tell me about a system you owned end to end.', sourceId: null, kind: 'question' as const }
 
 describe('runMockTurn', () => {
-  it('thinks at LOW at temperature 0 against the turn schema', async () => {
+  it('thinks at LOW against the turn schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: aQuestion }))
     await runMockTurn(turnInput, generate)
 
     const req = sent(generate)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'LOW' } })
+    expect(req.config).toEqual({ thinkingConfig: { thinkingLevel: 'LOW' } })
     expect(req.output).toEqual({ schema: MockTurnOutSchema })
     expect(req.system).toContain("You are the interviewer for one stage of one company's loop")
   })
@@ -159,12 +159,12 @@ const debriefOut = {
 }
 
 describe('runMockDebrief', () => {
-  it('thinks at LOW at temperature 0 against the debrief schema', async () => {
+  it('thinks at LOW against the debrief schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: debriefOut }))
     await runMockDebrief(debriefInput, generate)
 
     const req = sent(generate)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'LOW' } })
+    expect(req.config).toEqual({ thinkingConfig: { thinkingLevel: 'LOW' } })
     expect(req.output).toEqual({ schema: MockDebriefOutSchema })
     expect(req.system).toContain('You debrief a mock interview for the candidate who just gave it')
     expect(textOf(req)).toContain('Candidate: I led it over two quarters.')

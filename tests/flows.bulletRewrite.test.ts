@@ -92,7 +92,7 @@ interface SentRequest {
   system?: string
   prompt: { text?: string }[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
+  config: { thinkingConfig: { thinkingLevel: string } }
 }
 const sent = (g: ReturnType<typeof returning>, n: number) => g.mock.calls[n][0] as unknown as SentRequest
 const correction = (g: ReturnType<typeof returning>) => sent(g, 1).prompt.at(-1)?.text ?? ''
@@ -113,10 +113,10 @@ const message = async (o: BulletRewriteOut, i = input()) => {
 }
 
 describe('runBulletRewrite — the request', () => {
-  it('thinks at MEDIUM with the temperature sent explicitly', async () => {
+  it('thinks at MEDIUM and sends no sampling parameter', async () => {
     const generate = returning(out({ text: 'Ran the payments service.', citations: [{ claimSpan: 'the payments service', factId: 'f1', resumeSpan: null }] }))
     await runBulletRewrite(input(), generate)
-    expect(sent(generate, 0).config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
+    expect(sent(generate, 0).config).toEqual({ thinkingConfig: { thinkingLevel: 'MEDIUM' } })
     expect(sent(generate, 0).system).toContain('You rewrite resume bullets')
   })
 

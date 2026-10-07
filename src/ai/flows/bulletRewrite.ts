@@ -167,7 +167,7 @@ export async function runBulletRewrite(
   const { system, parts } = buildBulletRewritePrompt(input)
   const ask = (prompt: Part[]) =>
     generateStructured(
-      { parts: prompt, system, schema: BulletRewriteOutSchema, thinkingLevel: THINKING_LEVEL, temperature: 0 },
+      { parts: prompt, system, schema: BulletRewriteOutSchema, thinkingLevel: THINKING_LEVEL },
       generate,
     )
 

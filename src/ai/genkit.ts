@@ -1,7 +1,8 @@
 /**
- * The single Genkit entry point. Every flow reaches the model through
- * `generateStructured` — there is no other call site, so the model and the retry policy are
- * decided in exactly one place. The thinking level is not: each flow states its own.
+ * The single Genkit entry point. Every flow reaches the model through `generateStructured`, or
+ * `generateGrounded` for the one call that may search the web — there is no other call site, so
+ * the model and the request shape are decided in exactly one place. The thinking level is not:
+ * each flow states its own.
  *
  * Nothing here touches the network at import time: `googleAI()` only registers the
  * plugin, and the API key is read from GEMINI_API_KEY when a call is actually made.
@@ -11,8 +12,11 @@ import { googleAI } from '@genkit-ai/google-genai'
 
 const ai = genkit({ plugins: [googleAI()] })
 
+/** Exported so a record that names its model cannot drift from the model every call uses. */
+export const GEMINI_MODEL = 'gemini-3.8-flash'
+
 // Passed explicitly on every request so the request object fully describes the call.
-const model = googleAI.model('gemini-3.8-flash')
+const model = googleAI.model(GEMINI_MODEL)
 
 /** A prompt fragment. Media is inlined as a data URL: `data:<mime>;base64,<data>`. */
 export type Part = { text: string } | { media: { url: string; contentType: string } }
@@ -20,8 +24,9 @@ export type Part = { text: string } | { media: { url: string; contentType: strin
 /**
  * How much the model may think — a relative allowance, not a token count. It is the only thinking
  * knob sent: Gemini 3 keeps the numeric thinking budget for backward compatibility and buckets it
- * into these same levels (every budget up to 3000 behaves as LOW), and a request carrying both is
- * a 400. `MINIMAL` is left out because this model rejects it. Measured in docs/notes/deps.md.
+ * into these same levels (every budget up to 3000 behaves as LOW), a request carrying both is a
+ * 400, and Google says its next models will answer a budget alone with a 400 as well. `MINIMAL` is
+ * left out because this model rejects it. Measured in docs/notes/deps.md.
  */
 export type ThinkingLevel = 'LOW' | 'MEDIUM' | 'HIGH'
 
@@ -30,16 +35,6 @@ export interface GenerateStructuredOptions<T> {
   schema: z.ZodType<T>
   /** Required, with no default: every flow states the level it needs. */
   thinkingLevel: ThinkingLevel
-  /**
-   * Sampling temperature. Defaults to 0, and it is always sent: leaving it unset applies
-   * Gemini's own default, which is high. Task 10 measured what that costs — ten identical
-   * formParse runs over one 8-field form returned 7, 8 or 9 questions, and one returned 2,
-   * dropping stated limits along the way. Raising the thinking budget did not steady it.
-   * These flows read documents and report what is in them, so the same input should give
-   * the same answer; a product whose whole claim is "grounded, not credulous" cannot have
-   * its groundedness depend on a sample. A caller that genuinely wants variety asks for it.
-   */
-  temperature?: number
   system?: string
 }
 
@@ -92,10 +87,9 @@ export async function generateStructured<T>(
         system: opts.system,
         prompt: parts,
         output: { schema: opts.schema },
-        config: {
-          temperature: opts.temperature ?? 0,
-          thinkingConfig: { thinkingLevel: opts.thinkingLevel },
-        },
+        // No sampling parameter: Gemini 3.6 to 3.8 Flash ignore temperature, top_p and top_k,
+        // and Google says its next models will reject them with a 400 (docs/notes/deps.md).
+        config: { thinkingConfig: { thinkingLevel: opts.thinkingLevel } },
       })
       output = response.output
     } catch (cause) {
@@ -160,8 +154,8 @@ export async function generateGrounded(
     model,
     system: opts.system,
     prompt: opts.parts,
+    // The thinking level and the tool; as in generateStructured, no sampling parameter.
     config: {
-      temperature: 0,
       thinkingConfig: { thinkingLevel: opts.thinkingLevel },
       tools: [{ googleSearch: {} }],
     },

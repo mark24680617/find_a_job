@@ -29,7 +29,7 @@ interface SentRequest {
   system?: string
   prompt: Part[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingLevel: ThinkingLevel } }
+  config: { thinkingConfig: { thinkingLevel: ThinkingLevel } }
 }
 const sent = (generate: Mock<GenerateCall>, n: number) =>
   generate.mock.calls[n][0] as unknown as SentRequest
@@ -41,7 +41,7 @@ describe('generateStructured', () => {
     expect(generate).toHaveBeenCalledTimes(1)
   })
 
-  it('sends the parts, the schema, the thinking level and a zero temperature by default', async () => {
+  it('sends the parts, the schema and the thinking level, and no sampling parameter', async () => {
     const generate = vi.fn<GenerateCall>(() => ok(valid))
     await generateStructured(
       { parts, schema: Schema, system: 'You extract job facts.', thinkingLevel: 'MEDIUM' },
@@ -53,7 +53,7 @@ describe('generateStructured', () => {
     expect(req.system).toBe('You extract job facts.')
     expect(req.prompt).toEqual(parts)
     expect(req.output).toEqual({ schema: Schema })
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
+    expect(req.config).toEqual({ thinkingConfig: { thinkingLevel: 'MEDIUM' } })
   })
 
   // The level is the only thinking knob sent. Gemini 3 buckets the legacy numeric budget into
@@ -80,29 +80,19 @@ describe('generateStructured', () => {
     expect(opts).not.toHaveProperty('thinkingLevel')
   })
 
-  // Temperature is sent on every request, never left to the provider's default. T10 measured
-  // what the default costs: ten identical formParse runs returned 7, 8 or 9 questions for the
-  // same 8-field form, and one returned 2. A caller that wants variety asks for it.
-  it('passes an explicit temperature through, including one the default would hide', async () => {
-    const generate = vi.fn<GenerateCall>(() => ok(valid))
-    await generateStructured({ parts, schema: Schema, temperature: 0.9, thinkingLevel: 'LOW' }, generate)
-    expect(sent(generate, 0).config).toEqual({
-      temperature: 0.9,
-      thinkingConfig: { thinkingLevel: 'LOW' },
-    })
-  })
-
-  it('keeps the temperature on the retry, so the second try is not a differently-sampled one', async () => {
+  // No sampling parameter is sent, on the first try or the retry: Gemini 3.6 to 3.8 Flash ignore
+  // temperature, top_p and top_k, and Google says its next models will reject them with a 400.
+  it('sends the thinking level and no sampling parameter, on both attempts', async () => {
     const generate = vi
       .fn<GenerateCall>()
       .mockImplementationOnce(() => ok({ role: 'Backend Engineer', years: 'three' }))
       .mockImplementationOnce(() => ok(valid))
 
-    await generateStructured({ parts, schema: Schema, temperature: 0.4, thinkingLevel: 'LOW' }, generate)
-    expect(sent(generate, 1).config).toEqual({
-      temperature: 0.4,
-      thinkingConfig: { thinkingLevel: 'LOW' },
-    })
+    await generateStructured({ parts, schema: Schema, thinkingLevel: 'LOW' }, generate)
+    expect(generate).toHaveBeenCalledTimes(2)
+    for (const n of [0, 1]) {
+      expect(sent(generate, n).config).toStrictEqual({ thinkingConfig: { thinkingLevel: 'LOW' } })
+    }
   })
 
   it('omits system when the caller gives none', async () => {

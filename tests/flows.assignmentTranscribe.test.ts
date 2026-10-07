@@ -25,7 +25,7 @@ interface SentRequest {
   system?: string
   prompt: unknown[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
+  config: { thinkingConfig: { thinkingLevel: string } }
 }
 
 const returning = (text: string) => vi.fn<GenerateCall>(() => Promise.resolve({ output: { text } }))
@@ -51,12 +51,12 @@ describe('runAssignmentTranscribe', () => {
     expect(req.system).toBe(TRANSCRIBE_SYSTEM)
   })
 
-  it('thinks at LOW, at temperature 0, against the transcript schema', async () => {
+  it('thinks at LOW against the transcript schema', async () => {
     const generate = returning('The assignment.')
     await runAssignmentTranscribe({ pdfBase64 }, generate)
 
     const req = generate.mock.calls[0][0] as unknown as SentRequest
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'LOW' } })
+    expect(req.config).toEqual({ thinkingConfig: { thinkingLevel: 'LOW' } })
     expect(req.output).toEqual({ schema: AssignmentTranscribeOutSchema })
   })
 

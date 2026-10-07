@@ -68,7 +68,7 @@ const returning = (...outputs: AnswerDraftOut[]) => {
 interface SentRequest {
   system?: string
   prompt: { text?: string }[]
-  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
+  config: { thinkingConfig: { thinkingLevel: string } }
 }
 const sent = (generate: ReturnType<typeof returning>, n: number) =>
   generate.mock.calls[n][0] as unknown as SentRequest

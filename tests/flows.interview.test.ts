@@ -13,7 +13,7 @@ interface SentRequest {
   system?: string
   prompt: { text?: string }[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
+  config: { thinkingConfig: { thinkingLevel: string } }
 }
 
 const sent = (generate: { mock: { calls: unknown[][] } }) =>
@@ -36,12 +36,12 @@ describe('runInterviewInterpret', () => {
     await expect(runInterviewInterpret({ noticeText: NOTICE }, generate)).resolves.toEqual(interpreted)
   })
 
-  it('thinks at LOW at temperature 0 against the round schema', async () => {
+  it('thinks at LOW against the round schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: interpreted }))
     await runInterviewInterpret({ noticeText: NOTICE }, generate)
 
     const req = sent(generate)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'LOW' } })
+    expect(req.config).toEqual({ thinkingConfig: { thinkingLevel: 'LOW' } })
     expect(req.output).toEqual({ schema: InterviewInterpretOutSchema })
     expect(req.system).toContain('You interpret an interview notice')
   })
@@ -133,12 +133,12 @@ describe('runPrepBrief', () => {
     ).resolves.toEqual(briefStored)
   })
 
-  it('thinks at LOW at temperature 0 against the brief schema', async () => {
+  it('thinks at LOW against the brief schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: briefOut }))
     await runPrepBrief({ roundType: 'recruiter-screen', parsed, facts }, generate)
 
     const req = sent(generate)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'LOW' } })
+    expect(req.config).toEqual({ thinkingConfig: { thinkingLevel: 'LOW' } })
     expect(req.output).toEqual({ schema: PrepBriefOutSchema })
     expect(req.system).toContain('You write an interview prep brief for one round')
   })

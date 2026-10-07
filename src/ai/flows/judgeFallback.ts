@@ -1,5 +1,5 @@
 import { z } from 'genkit'
-import { generateStructured, type GenerateCall, type ThinkingLevel } from '@/ai/genkit'
+import { GEMINI_MODEL, generateStructured, type GenerateCall, type ThinkingLevel } from '@/ai/genkit'
 import type { Noul } from '@/ai/jev'
 import { JUDGE_FALLBACK_SYSTEM, buildJudgeFallbackPrompt } from '@/ai/prompts/judgeFallback'
 
@@ -14,9 +14,10 @@ const THINKING_LEVEL: ThinkingLevel = 'LOW'
 
 /**
  * The model id stamped on every judgement this flow answers, so a stored `BulletJudgement` says
- * which model said it. It must equal the model `src/ai/genkit.ts:15` builds every call with.
+ * which model said it. It is the model `src/ai/genkit.ts` builds every call with, imported rather
+ * than restated so the two cannot drift.
  */
-export const JUDGE_FALLBACK_MODEL = 'gemini-3.8-flash'
+export const JUDGE_FALLBACK_MODEL = GEMINI_MODEL
 
 const ANSWER = z.enum(['yes', 'no'])
 
@@ -36,9 +37,6 @@ function schemaFor(ids: string[]): z.ZodType<Record<string, 'yes' | 'no'>> {
  * is nothing here to calibrate and nothing to put a band around, so §6.1's `unjudged` band does
  * not apply on this arm and `toVerdict` says so.
  *
- * `temperature` is sent explicitly rather than left to the default: a judgement that changed
- * between two runs of the same resume would make the count on screen a sample.
- *
  * `systemPrompt` defaults to the Diagnose prompt; Gaps passes `JUDGE_FALLBACK_GAPS_SYSTEM` (R34).
  */
 export async function judgeWithGemini(
@@ -50,7 +48,7 @@ export async function judgeWithGemini(
   const ids = Object.keys(questions)
   const { system, parts } = buildJudgeFallbackPrompt(state, questions, systemPrompt)
   const out = await generateStructured(
-    { parts, system, schema: schemaFor(ids), thinkingLevel: THINKING_LEVEL, temperature: 0 },
+    { parts, system, schema: schemaFor(ids), thinkingLevel: THINKING_LEVEL },
     generate,
   )
   // The schema already refused a missing id and a word that is not one of the two. This drops a

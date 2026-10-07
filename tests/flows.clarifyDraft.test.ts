@@ -57,7 +57,7 @@ interface SentRequest {
   system?: string
   prompt: { text?: string }[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
+  config: { thinkingConfig: { thinkingLevel: string } }
 }
 const sent = (generate: ReturnType<typeof returning>, n: number) =>
   generate.mock.calls[n][0] as unknown as SentRequest
@@ -72,12 +72,12 @@ const reasons = (generate: ReturnType<typeof returning>) =>
   correction(generate).split('Why they were rejected:')[1] ?? ''
 
 describe('runClarifyDraft — the request', () => {
-  it('thinks at MEDIUM on the schema, at the default temperature', async () => {
+  it('thinks at MEDIUM on the schema', async () => {
     const generate = returning(out(q()))
     await runClarifyDraft(input(), generate)
 
     const req = sent(generate, 0)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'MEDIUM' } })
+    expect(req.config).toEqual({ thinkingConfig: { thinkingLevel: 'MEDIUM' } })
     expect(req.output).toEqual({ schema: ClarifyDraftOutSchema })
     expect(req.system).toContain('You set up one job-application answer before it is written')
   })

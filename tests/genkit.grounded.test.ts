@@ -9,13 +9,11 @@ import { generateGrounded, type ThinkingLevel } from '@/ai/genkit'
 const custom = JSON.parse(readFileSync('tests/fixtures/grounding-response.json', 'utf8')) as unknown
 
 describe('generateGrounded', () => {
-  it('asks for Google Search, sends no output schema, and reads the metadata', async () => {
+  it('asks for Google Search, sends no output schema and no sampling parameter, and reads the metadata', async () => {
     const generate = vi.fn().mockResolvedValue({ output: null, text: 'line one\nline two', custom })
     const res = await generateGrounded({ parts: [{ text: 'q' }], system: 'sys', thinkingLevel: 'MEDIUM' }, generate)
     const opts = generate.mock.calls[0][0]
-    expect(opts.config.tools).toEqual([{ googleSearch: {} }])
-    expect(opts.config.temperature).toBe(0)
-    expect(opts.config.thinkingConfig).toStrictEqual({ thinkingLevel: 'MEDIUM' })
+    expect(opts.config).toStrictEqual({ thinkingConfig: { thinkingLevel: 'MEDIUM' }, tools: [{ googleSearch: {} }] })
     expect(opts.output).toBeUndefined()
     expect(res.text).toBe('line one\nline two')
     expect(res.chunks).toEqual([

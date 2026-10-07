@@ -160,7 +160,6 @@ async function judge(
       system: SYSTEM,
       schema: AnswerSchema,
       thinkingLevel: THINKING_LEVEL,
-      temperature: 0,
     },
     generate,
   )

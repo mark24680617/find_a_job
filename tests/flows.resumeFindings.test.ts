@@ -31,11 +31,11 @@ const finding = (over: Record<string, unknown> = {}) => ({
 })
 
 describe('runResumeFindings', () => {
-  it('thinks at MEDIUM with temperature 0 sent explicitly', async () => {
+  it('thinks at MEDIUM and sends no temperature', async () => {
     const generate = vi.fn().mockResolvedValue({ output: { findings: [finding()] } })
     await runResumeFindings(input(), generate)
     expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'MEDIUM' })
-    expect(generate.mock.calls[0][0].config.temperature).toBe(0)
+    expect(generate.mock.calls[0][0].config).not.toHaveProperty('temperature')
   })
 
   it('makes no call at all when nothing failed', async () => {

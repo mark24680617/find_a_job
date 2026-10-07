@@ -9,11 +9,11 @@ const questions = bulletNouls()
 const answers = { result: 'yes', action: 'yes', scale: 'no', 'self-description': 'yes' }
 
 describe('judgeWithGemini', () => {
-  it('thinks at LOW, sends temperature 0 explicitly, and returns one enum per id', async () => {
+  it('thinks at LOW, sends no temperature, and returns one enum per id', async () => {
     const generate = vi.fn().mockResolvedValue({ output: answers })
     await expect(judgeWithGemini(state, questions, generate)).resolves.toEqual(answers)
     expect(generate.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'LOW' })
-    expect(generate.mock.calls[0][0].config.temperature).toBe(0)
+    expect(generate.mock.calls[0][0].config).not.toHaveProperty('temperature')
     expect(generate.mock.calls[0][0].config.thinkingConfig.thinkingBudget).toBeUndefined()
   })
 

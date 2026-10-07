@@ -14,7 +14,7 @@ interface SentRequest {
   system?: string
   prompt: ({ text?: string } | { media?: { url: string; contentType: string } })[]
   output: { schema: unknown }
-  config: { temperature: number; thinkingConfig: { thinkingLevel: string } }
+  config: { thinkingConfig: { thinkingLevel: string } }
 }
 
 const sent = (generate: { mock: { calls: unknown[][] } }) =>
@@ -32,12 +32,12 @@ describe('runFeedbackDistill', () => {
     await expect(runFeedbackDistill(input, generate)).resolves.toEqual(out)
   })
 
-  it('thinks at LOW at temperature 0, and binds the schema', async () => {
+  it('thinks at LOW and binds the schema', async () => {
     const generate = vi.fn<GenerateCall>(() => Promise.resolve({ output: out }))
     await runFeedbackDistill(input, generate)
 
     const req = sent(generate)
-    expect(req.config).toEqual({ temperature: 0, thinkingConfig: { thinkingLevel: 'LOW' } })
+    expect(req.config).toEqual({ thinkingConfig: { thinkingLevel: 'LOW' } })
     expect(req.output).toEqual({ schema: FeedbackDistillOutSchema })
     expect(req.system).toContain('Compare the AI draft with the human')
   })
