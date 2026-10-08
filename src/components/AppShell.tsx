@@ -156,7 +156,9 @@ export function AppShell({ children, signedOut, returning = false }: Props) {
               <Wordmark />
             </Link>
 
-            <nav aria-label="Main" className="flex items-center gap-6 text-sm">
+            {/* Wraps rather than overflows: at phone width the links take two rows instead of
+                pushing Account and Admin off the screen, and no label breaks inside itself. */}
+            <nav aria-label="Main" className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               {items.map(({ href, label }) => {
                 const active = href === current
                 return (
@@ -169,8 +171,8 @@ export function AppShell({ children, signedOut, returning = false }: Props) {
                     }}
                     className={
                       active
-                        ? 'border-b border-accent pb-0.5 font-medium text-ink'
-                        : 'border-b border-transparent pb-0.5 text-ink-2 hover:text-ink'
+                        ? 'whitespace-nowrap border-b border-accent pb-0.5 font-medium text-ink'
+                        : 'whitespace-nowrap border-b border-transparent pb-0.5 text-ink-2 hover:text-ink'
                     }
                   >
                     {label}

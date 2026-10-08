@@ -283,8 +283,7 @@ export function ResumePageClient() {
     <main className="mx-auto w-full max-w-5xl flex-1 px-6 pt-10 pb-16">
       <h1 className="font-display text-[2rem] leading-tight tracking-tight text-ink">Resume</h1>
       <p className="mt-2 max-w-[58ch] text-[0.9375rem] leading-relaxed text-ink-2">
-        The document you send to employers, and what can be checked about it. Nothing here runs
-        until you press something.
+        Upload your resume to check it, see what it’s missing, and rewrite the lines that fall short.
       </p>
 
       {/* `min-w-0` undoes the `min-inline-size: min-content` a fieldset carries by default. */}

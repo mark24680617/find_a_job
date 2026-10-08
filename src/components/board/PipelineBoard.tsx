@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { readable } from '@/lib/readable'
 import type { Application, AppStatus, TimelineEvent } from '@/lib/types'
 
@@ -12,6 +12,19 @@ import type { Application, AppStatus, TimelineEvent } from '@/lib/types'
  * dragging. What a person comes here for is the answer to "where is everything, and what
  * has gone quiet" — so each card carries the one number that is hard to hold in your head,
  * the days since anything last happened to it.
+ *
+ * A ledger keeps growing, so each column reads most recent first, by that same date, and stops
+ * at six: the cards that moved last are the ones a glance should land on, and the rest are one
+ * "Show all" away, with the button and the heading both counting the whole column. Rejected starts
+ * folded to its heading and count — a rejection is finished business, kept for the record, and a
+ * long run of them is the last thing to read on the way to the live ones. Offer stays open: an
+ * ending too, but one still to be acted on. What is opened is kept in this component and nowhere
+ * else, so a reload puts every column back at six and Rejected folded.
+ *
+ * The other way in is by name. The field above the columns narrows all five at once to the
+ * records whose company and role, between them, hold every word typed, in any order. While it
+ * holds a query nothing is capped or folded and each heading counts its matches; when nothing
+ * matches, one line says so where the columns were. Escape empties it.
  *
  * A card asks one question rather than offering five answers. What actually happens next to a
  * draft is that you submit it, and to an applied record that somebody writes back — so the card
@@ -36,6 +49,92 @@ export const COLUMNS: readonly { status: AppStatus; label: string }[] = [
 export function lastTouched(app: Application): string {
   const last = app.timeline.at(-1)?.at
   return last && !Number.isNaN(Date.parse(last)) ? last : app.createdAt
+}
+
+/**
+ * Most recent activity first, by `lastTouched`, for `Array.prototype.sort`. A record whose date
+ * can't be read goes to the end rather than wherever a NaN comparison happens to leave it, and a
+ * tie compares equal — the sort is stable, so ties keep the order the list arrived in, which is
+ * newest-created first.
+ */
+export function byLastTouched(a: Application, b: Application): number {
+  const ta = Date.parse(lastTouched(a))
+  const tb = Date.parse(lastTouched(b))
+  const lostA = Number.isNaN(ta)
+  const lostB = Number.isNaN(tb)
+  if (lostA || lostB) return Number(lostA) - Number(lostB)
+  return tb - ta
+}
+
+/** The words of a query, lowercased. None for a blank one. */
+function words(query: string): string[] {
+  const q = query.trim().toLowerCase()
+  return q === '' ? [] : q.split(/\s+/)
+}
+
+/**
+ * Whether a record answers the search: every word of the query appears somewhere in its company
+ * or its role, in any order. The two are joined with a space, so no word can start in one and
+ * finish in the other. A query with no words keeps every record.
+ */
+export function matchesQuery(app: Application, query: string): boolean {
+  const text = `${app.company} ${app.role}`.toLowerCase()
+  return words(query).every((word) => text.includes(word))
+}
+
+/** How many cards a column shows before the rest wait behind its button. */
+const CAP = 6
+
+export interface ColumnView {
+  /** The cards to draw, most recent first. */
+  shown: Application[]
+  /** How many of the column's records are not drawn — past the cap, or behind the fold. */
+  hidden: number
+  /** The words on the column's one button, or null when it has none. */
+  toggle: string | null
+}
+
+/**
+ * What one column draws. Its records most recent first; with no query, the first `cap` of them
+ * and a button for the rest — or, for a column that starts `collapsed`, none of them and a button
+ * that says how many there are, until it is opened, when it opens whole. While a query is set,
+ * every match and no button: a search that kept some of its answers behind a press would be
+ * answering a smaller question than the one asked.
+ */
+export function columnView(
+  apps: Application[],
+  {
+    query,
+    cap,
+    expanded,
+    collapsed,
+  }: { query: string; cap: number; expanded: boolean; collapsed: boolean },
+): ColumnView {
+  const matches = apps.filter((app) => matchesQuery(app, query)).sort(byLastTouched)
+  const total = matches.length
+  if (words(query).length > 0 || total === 0) return { shown: matches, hidden: 0, toggle: null }
+  if (collapsed) {
+    return expanded
+      ? { shown: matches, hidden: 0, toggle: 'Hide' }
+      : { shown: [], hidden: total, toggle: `Show ${total}` }
+  }
+  if (total <= cap) return { shown: matches, hidden: 0, toggle: null }
+  return expanded
+    ? { shown: matches, hidden: 0, toggle: 'Show fewer' }
+    : { shown: matches.slice(0, cap), hidden: total - cap, toggle: `Show all ${total}` }
+}
+
+/**
+ * What the board says about a search: nothing without one; how many records match, for a screen
+ * reader, since the column counts already show it; and, when none do, the line that stands on
+ * screen in place of the columns. Both name the query: a live region speaks only when its words
+ * change, so a second search that found as many as the first would otherwise go unsaid.
+ */
+export function searchStatus(query: string, matches: number): string {
+  const q = query.trim()
+  if (q === '') return ''
+  if (matches === 0) return `No application matches “${q}”.`
+  return matches === 1 ? `1 application matches “${q}”.` : `${matches} applications match “${q}”.`
 }
 
 /** How long it has sat there: `today`, `yesterday`, `12 days`. Empty when the date is unreadable. */
@@ -99,36 +198,127 @@ interface Props {
   onRemove: (app: Application) => Promise<void>
 }
 
-export function PipelineBoard({ apps, onMove, onRemove }: Props) {
-  return (
-    <section
-      aria-label="Pipeline"
-      className="mt-8 grid gap-x-5 gap-y-9 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5"
-    >
-      {COLUMNS.map(({ status, label }) => {
-        const inColumn = apps.filter((a) => a.status === status)
-        return (
-          <section key={status} aria-labelledby={`col-${status}`}>
-            <div className="flex items-baseline justify-between gap-2 border-b border-line-strong pb-1.5">
-              <h2
-                id={`col-${status}`}
-                className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-ink-2"
-              >
-                {label}
-              </h2>
-              <span className="tnum text-[0.6875rem] text-ink-3">{inColumn.length}</span>
-            </div>
+/** How long the typing has to rest before the board says how many records match. */
+const SETTLE_MS = 600
 
-            <ul className="mt-3 flex flex-col gap-2.5">
-              {inColumn.map((app) => (
-                <li key={app.id}>
-                  <Card app={app} onMove={onMove} onRemove={onRemove} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
-      })}
+/** The board's columns, shared by the search row so the field sits exactly on the first. */
+const GRID = 'grid gap-x-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5'
+
+export function PipelineBoard({ apps, onMove, onRemove }: Props) {
+  const [query, setQuery] = useState('')
+  // Which columns have been opened past their cap, or out of their fold.
+  const [expanded, setExpanded] = useState<Partial<Record<AppStatus, boolean>>>({})
+  const [spoken, setSpoken] = useState('')
+
+  const columns = COLUMNS.map((column) => {
+    const open = expanded[column.status] ?? false
+    // Rejected alone starts folded; the top of the file says why.
+    const view = columnView(
+      apps.filter((a) => a.status === column.status),
+      { query, cap: CAP, expanded: open, collapsed: column.status === 'rejected' },
+    )
+    return { ...column, open, view }
+  })
+  const found = columns.reduce((sum, { view }) => sum + view.shown.length + view.hidden, 0)
+  const message = searchStatus(query, found)
+  const nothingMatches = found === 0 && message !== ''
+
+  // The line on screen keeps up with every key; what a screen reader is told waits for the typing
+  // to rest. A sentence per keystroke would still be reading out the first when the fifth landed.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSpoken(message), SETTLE_MS)
+    return () => window.clearTimeout(timer)
+  }, [message])
+
+  return (
+    <section aria-label="Pipeline" className="mt-8">
+      <label htmlFor="board-search" className="sr-only">
+        Find an application
+      </label>
+      {/* One column wide at every breakpoint, on the same grid as the columns below: any fixed
+          width ends somewhere inside the second column at one screen size or another. */}
+      <div className={GRID}>
+        <input
+          id="board-search"
+          type="search"
+          placeholder="Find an application"
+          className="field field-boxed h-10 px-3"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            // Escape empties the field in every browser, not only the ones that do it natively —
+            // except mid-composition, where an IME's Escape abandons the word, not the query.
+            if (e.key === 'Escape' && !e.nativeEvent.isComposing && query !== '') setQuery('')
+          }}
+        />
+      </div>
+
+      {/* The board's one status region, drawn from the first paint and empty until there is a
+          search to report: a region that arrives already carrying its message goes unannounced
+          by several screen readers. The no-match line is shown at once and hidden from the
+          accessibility tree; the copy beside it is the same sentence, set once the typing rests.
+          Its margin rides on the line, so when there is nothing to show it takes no room. It may
+          break inside a word: it repeats the query as typed, and a pasted posting link is one
+          word wider than a phone. */}
+      <p role="status">
+        {nothingMatches && (
+          <span aria-hidden="true" className="mt-6 block break-words text-[0.9375rem] text-ink-2">
+            {message}
+          </span>
+        )}
+        <span className="sr-only">{spoken}</span>
+      </p>
+
+      {!nothingMatches && (
+        <div className={`${GRID} mt-6 gap-y-9`}>
+          {columns.map(({ status, label, open, view }) => (
+            <section key={status} aria-labelledby={`col-${status}`}>
+              <div className="flex items-baseline justify-between gap-2 border-b border-line-strong pb-1.5">
+                <h2
+                  id={`col-${status}`}
+                  className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-ink-2"
+                >
+                  {label}
+                </h2>
+                {/* The whole column — or while searching, its matches — never just the cards on
+                    show, so a folded or capped column still says what it holds. */}
+                <span className="tnum text-[0.6875rem] text-ink-3">
+                  {view.shown.length + view.hidden}
+                </span>
+              </div>
+
+              {/* Folded rather than removed: the button below points at this list by id. */}
+              <ul
+                id={`col-${status}-list`}
+                hidden={view.shown.length === 0 && view.hidden > 0}
+                className="mt-3 flex flex-col gap-2.5"
+              >
+                {view.shown.map((app) => (
+                  <li key={app.id}>
+                    <Card app={app} onMove={onMove} onRemove={onRemove} />
+                  </li>
+                ))}
+              </ul>
+
+              {/* Under the list, and one element whichever way it reads, so the focus stays on it
+                  through a press while the cards come and go above. Named for its column, since
+                  two can read the same, with the visible words first (WCAG 2.5.3). */}
+              {view.toggle && (
+                <button
+                  type="button"
+                  className="btn-link mt-2.5 min-h-6 text-[0.75rem]"
+                  aria-expanded={open}
+                  aria-controls={`col-${status}-list`}
+                  aria-label={`${view.toggle}: ${label}`}
+                  onClick={() => setExpanded((prev) => ({ ...prev, [status]: !prev[status] }))}
+                >
+                  {view.toggle}
+                </button>
+              )}
+            </section>
+          ))}
+        </div>
+      )}
     </section>
   )
 }

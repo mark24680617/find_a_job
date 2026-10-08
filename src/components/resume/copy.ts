@@ -30,14 +30,13 @@ export const NOTHING_TO_REWRITE = 'Nothing to rewrite. Every bullet carried a re
 /** §5.2, drawn beside any artifact whose `reviewedFrom` is not the current `addedAt`. */
 export const STALE = 'Reviewed against an earlier upload.'
 
-/** §8, beside the intake and in the README. Nothing here is softened or abbreviated. */
+/**
+ * §8's disclosure as the page has carried it since 2026-10-07: one line, at the owner's ruling
+ * (Amendments, item 17). The README keeps §8's line in full — the two vendors, TypeSafe's terms
+ * and where the document is stored.
+ */
 export const DISCLOSURE =
-  'Your resume text goes to Google’s Gemini API to produce what is on this page. When a ' +
-  'TypeSafe API key is configured, the same text also goes to TypeSafe’s Jev API for the ' +
-  'yes/no judgements. TypeSafe’s terms say it does not train on what you send and that the ' +
-  'output is yours; the same terms reserve ongoing rights over telemetry derived from your ' +
-  'requests, and zero-data-retention is an enterprise-only option this deployment does not ' +
-  'have. Your resume is stored under your account in Firestore, and you can delete it here.'
+  'Your resume is private to your account, and you can delete it at any time.'
 
 /**
  * §8's stated gap. When fill colour cannot be read on a build, the zero-size checks still run and

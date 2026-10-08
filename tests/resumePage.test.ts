@@ -45,6 +45,13 @@ describe('the Resume page in the frame', () => {
     expect(markup).toContain('Opening your resume…')
     expect(markup).not.toContain('No resume here yet.')
   })
+  it('says what the page does in one sentence under the heading', () => {
+    // Drawn only once the GET lands, which a static render never reaches, so the source is read.
+    const page = readFileSync('src/components/resume/ResumePageClient.tsx', 'utf8')
+    expect(page).toMatch(
+      /Resume<\/h1>\s*<p[^>]*>\s*Upload your resume to check it, see what it’s missing, and rewrite the lines that fall short\.\s*<\/p>/,
+    )
+  })
 })
 
 describe('UploadCard — what it says when there is nothing stored', () => {
@@ -67,23 +74,18 @@ describe('UploadCard — what it says when there is nothing stored', () => {
 })
 
 describe('UploadCard — the disclosure', () => {
-  it('names both vendors, the telemetry they keep and where the document lives, every time', () => {
+  it('says the resume is private to the account and can be deleted, stored or not', () => {
     const both = [card(), card({ resume: resume() })]
     for (const out of both) {
-      expect(out).toContain(
-        'Your resume text goes to Google’s Gemini API to produce what is on this page. ' +
-        'When a TypeSafe API key is configured, the same text also goes to TypeSafe’s Jev API ' +
-        'for the yes/no judgements. TypeSafe’s terms say it does not train on what you send and ' +
-        'that the output is yours; the same terms reserve ongoing rights over telemetry derived ' +
-        'from your requests, and zero-data-retention is an enterprise-only option this deployment ' +
-        'does not have. Your resume is stored under your account in Firestore, and you can delete ' +
-        'it here.',
-      )
+      expect(out).toContain('Your resume is private to your account, and you can delete it at any time.')
     }
   })
 })
 
 describe('UploadCard — the file the browser will not post', () => {
+  it('says PDF only before anything is chosen, stored or not', () => {
+    for (const out of [card(), card({ resume: resume() })]) expect(out).toContain('>PDF only.</p>')
+  })
   it('refuses anything that is not a PDF', () => {
     expect(fileProblem({ type: 'application/msword', size: 1_000 })).toBe(
       'That isn’t a PDF. Export your resume as PDF and upload that.',

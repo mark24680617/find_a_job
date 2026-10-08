@@ -9,9 +9,9 @@ import type { StoredResume } from '@/lib/types'
  * The document itself: what is stored, what the profile's own facts look like against it, and
  * the two ways to change it — replace, or delete.
  *
- * The card states the data posture where the document is handed over rather than in a settings
- * page nobody opens (§8). It is shown whether or not anything is stored, because the sentence
- * is about what pressing the control will do.
+ * The card says where the document is handed over, rather than in a settings page nobody opens,
+ * that it is private to the account and can be deleted at any time (§8, as amended 2026-10-07).
+ * It is shown whether or not anything is stored.
  *
  * The 6 MB check here is the browser's half of the server's two: `MAX_RESUME_BYTES` is imported
  * rather than re-typed, so there is exactly one number. It is not a guard — the route checks
@@ -100,8 +100,7 @@ export function UploadCard({ resume, profileFacts, busy, error = '', onUpload, o
           The document
         </h2>
         <p className="mt-1 max-w-[64ch] text-sm leading-relaxed text-ink-2">
-          One resume, replaced in place. PDF only — a Word file is a second parser and a second
-          set of checks, and neither is here yet.
+          PDF only.
         </p>
       </div>
 

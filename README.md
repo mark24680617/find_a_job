@@ -41,7 +41,8 @@ proposes a replacement for a bullet that failed, with every claim cited back to 
 span of the resume, and writes nothing until you accept it. Every count on that page is `.length`
 over the rows beside it; there is no score and no percentage anywhere on it.
 
-The page says this, and so does this README:
+The page has one line about privacy — your resume is private to your account, and you can delete
+it at any time. In full, for anyone running a copy of their own:
 
 > Your resume text goes to Google's Gemini API to produce what is on this page. When a TypeSafe
 > API key is configured, the same text also goes to TypeSafe's Jev API for the yes/no judgements.
@@ -92,7 +93,7 @@ login` is what gives the server side its Firestore credentials locally; on Cloud
 code picks up the runtime service account instead.
 
 ```sh
-npm test          # 2267 tests
+npm test          # 2299 tests
 npm run build     # production build, typecheck included
 ```
 
@@ -184,13 +185,13 @@ Next.js 16 · TypeScript · Tailwind
 
 ## Roadmap
 
-- **Interview prep, beyond the first brief.** Paste the scheduling email and you get a typed
-  round and a prep brief for it today. Still to come: reading a *screenshot* of the notice, a
-  mock interview you can talk to, and a page per round rather than a card on the application.
+- **Interview prep, the parts still to come.** Each round has its own page today, with a brief for
+  its stage, a typed six-question mock and a debrief. Still to come: reading a *screenshot* of the
+  notice, a mock interview you can talk to, and answering a round's open questions in place.
 - **The cover letter, past the first draft.** A letter is set up, drafted with every claim cited,
-  adjusted and exported as a PDF today. Still to come: a letterhead the profile remembers, so a
-  phone number is typed once rather than once per application; UK conventions, since the copy is
-  en-US throughout; and a plain-text variant for the forms that want the letter pasted.
+  adjusted and exported as a PDF today, under a letterhead filled from the profile's contact
+  details. Still to come: UK conventions, since the copy is en-US throughout; and a plain-text
+  variant for the forms that want the letter pasted.
 - **An AWS port**, to check that nothing here is load-bearing on one cloud.
 
 ## Built for
