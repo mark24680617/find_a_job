@@ -108,7 +108,9 @@ const STOPWORDS = new Set([
 export function contentTokens(s: string): string[] {
   const seen = new Set<string>()
   for (const raw of normalizeWs(s).toLowerCase().split(/[^a-z0-9+#.]+/)) {
-    const token = raw.replace(/^\.+|\.+$/g, '')
+    // The trailing dots are looked for only where a run of dots starts: tried from every dot of
+    // a run inside the token, `\.+$` read the rest of the run again each time.
+    const token = raw.replace(/^\.+|(?<!\.)\.+$/g, '')
     if (token.length < 3 || STOPWORDS.has(token)) continue
     seen.add(token)
   }

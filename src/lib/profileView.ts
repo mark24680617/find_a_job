@@ -102,10 +102,20 @@ const TAG_SECTION: Record<string, Section> = {
   proficiency: 'Skills',
 }
 
-const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
-const EMAIL_RE_G = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
+/**
+ * An address, and a site: a scheme or `www.` and what follows, or a run of domain labels ending
+ * in a common TLD. Each is read only from where its run of address characters, or of domain
+ * labels, starts (the lookbehinds). Read from every character inside such a run, as they were, a
+ * claim of 20,000 letters with no "@" took 2 s, and a profile holds a megabyte of claims
+ * (security review, 2026-10-08). The first address found is the same as before. What changed
+ * is on no honest claim: a second address glued to the first (`a@b.com.c@d.org`) is no longer
+ * taken out with it, and a run of labels that starts with "-" or follows "_" (`-a.com`) no
+ * longer yields the site that started partway in.
+ */
+const EMAIL_RE = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
+const EMAIL_RE_G = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
 const URL_RE =
-  /(?:https?:\/\/|www\.)[^\s)]+|\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:com|io|dev|org|net|me|co|app|ai|gg|xyz)\b(?:\/[^\s)]*)?/i
+  /(?:https?:\/\/|www\.)[^\s)]+|(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\.)\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:com|io|dev|org|net|me|co|app|ai|gg|xyz)\b(?:\/[^\s)]*)?/i
 /**
  * A run of phone-ish characters; the digit count (not the shape) is what qualifies it. The
  * opening bracket is taken with it: starting at the first digit cut `(503) 555-0161` down to
@@ -324,7 +334,8 @@ export function extractIdentity(
     if (!identity.website) {
       // Strip any email first so its domain can't be mistaken for a site.
       const m = URL_RE.exec(claim.replace(EMAIL_RE_G, ' '))
-      if (m) identity.website = m[0].replace(/[.,;]+$/, '')
+      // Looked for only where a run of punctuation starts, so a site full of it reads in one pass.
+      if (m) identity.website = m[0].replace(/(?<![.,;])[.,;]+$/, '')
     }
     if (!identity.phone && hasPhone(claim)) {
       const m = PHONE_RE.exec(claim)

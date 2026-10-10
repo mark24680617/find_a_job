@@ -86,7 +86,15 @@ const DATE_RANGE_RE = new RegExp(
   'i',
 )
 
-const ROLE_ORG_SPLIT = /\s+[–—|]\s+|\s*,\s*|\s+\bat\b\s+/i
+/**
+ * A separator is tried only where a run of spaces starts (the lookbehind): from every space
+ * inside a run, each alternative read the rest of the run again, and with the trailing-run strip
+ * in `headParts` that made one dated line holding 40,000 spaces take 18 s to structure (security
+ * review, 2026-10-08). Every separator ends on all the spaces after it, so the one place a split
+ * can start right after a space is a comma that follows the last separator directly —
+ * `Engineer , , Acme` — and the bare `,\s*` keeps that split.
+ */
+const ROLE_ORG_SPLIT = /(?<!\s)(?:\s+[–—|]\s+|\s*,\s*|\s+\bat\b\s+)|,\s*/i
 
 const visible = (line: Line): boolean => line.size > 0 && line.text.trim() !== ''
 
@@ -102,7 +110,8 @@ function headParts(text: string, range: RegExpExecArray): string[] {
   return text
     .slice(0, range.index)
     .trim()
-    .replace(/[\s,|–—-]+$/u, '')
+    // Only where a run of separator characters starts, so a long run inside the text is read once.
+    .replace(/(?<![\s,|–—-])[\s,|–—-]+$/u, '')
     .split(ROLE_ORG_SPLIT)
     .map((p) => p.trim())
     .filter((p) => p !== '')

@@ -11,6 +11,21 @@ const TIMEOUT_MS = 10_000
 // is another address to check.
 const MAX_REDIRECTS = 3
 
+// The most of a body that is read, counted after undici has decompressed it (caps spec §7.5):
+// 4 MiB from any host, past which a page is one to paste instead, and 32 MiB from Ashby's
+// job-board API. Ashby has no single-posting endpoint, so a posting is read out of its company's
+// whole board, and OpenAI's board came to 14.3 MB decoded on 2026-10-08; the larger cap keeps
+// every Ashby posting link working (decided 2026-10-08). It is chosen here, per hop, from the
+// host the body is read from and nothing else, so no caller can raise it: a redirect away from
+// Ashby is read under 4 MiB, and a host that only looks like Ashby's is any other host.
+const MAX_BODY_BYTES = 4 * 1024 * 1024
+const ASHBY_API_HOST = 'api.ashbyhq.com'
+const MAX_ASHBY_BODY_BYTES = 32 * 1024 * 1024
+
+/** The cap on a body read from `url`. */
+const capFor = (url: string): number =>
+  new URL(url).hostname === ASHBY_API_HOST ? MAX_ASHBY_BODY_BYTES : MAX_BODY_BYTES
+
 // Some career sites serve a challenge page to unknown clients; a normal browser string is
 // enough to get the public HTML the same visitor would see.
 export const BROWSER_UA =
@@ -22,6 +37,33 @@ interface Fetched {
   location: string | null
   /** The `content-type` header, `''` when the server sent none. */
   contentType: string
+}
+
+/**
+ * The body as text, counted as it arrives and given up past `cap` bytes. What is counted is
+ * what the stream yields, after undici has decompressed it, so a small gzip that inflates to
+ * gigabytes stops here too; `content-length` is never consulted, since a chunked body has none
+ * and any body can misstate it. Past the cap the body is cancelled and the request aborted, and
+ * the refusal names the cap. Decoded as `res.text()` decodes: UTF-8, a leading BOM dropped, a
+ * bad byte replaced.
+ */
+async function readCapped(res: Response, controller: AbortController, cap: number): Promise<string> {
+  if (!res.body) return ''
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+  let bytes = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) return text + decoder.decode()
+    bytes += value.byteLength
+    if (bytes > cap) {
+      void reader.cancel().catch(() => {})
+      controller.abort()
+      throw new FetchBlockedError(`That page is over ${cap / 1024 / 1024} MB — ${PASTE_INSTEAD}`)
+    }
+    text += decoder.decode(value, { stream: true })
+  }
 }
 
 async function send(
@@ -40,8 +82,12 @@ async function send(
     })
     // The body is read inside the timed scope on purpose: the abort signal is the only
     // thing that can end a stalled download, and an Ashby board is megabytes of it.
-    // `res.ok` is false for a 3xx too, so a manual redirect never reads a body.
-    const body = res.ok ? (kind === 'json' ? await res.json() : await res.text()) : null
+    // `res.ok` is false for a 3xx too, so a manual redirect never reads a body. The cap is the
+    // one for where the body comes from: `res.url`, which after a redirect `fetch` followed
+    // (getJson) is the last hop's address, and with redirects followed by hand
+    // (getGuardedText) is this hop's. A response a test builds has no `url`.
+    const text = res.ok ? await readCapped(res, controller, capFor(res.url || url)) : null
+    const body = text !== null && kind === 'json' ? JSON.parse(text) : text
     // What the body is, not only where it came from. A brief behind a link is a Google Docs
     // export, a raw file off GitHub or a page, and the three have to be read differently;
     // a PDF served at a link is refused on this header before anything tries to make text
@@ -53,9 +99,10 @@ async function send(
       location: res.headers.get('location'),
       contentType: res.headers.get('content-type') ?? '',
     }
-  } catch {
-    // Timeout, DNS failure, a refused connection and a body that stops mid-stream are all
-    // the same story to the user.
+  } catch (err) {
+    // A page over the cap says so. Timeout, DNS failure, a refused connection, a body that
+    // stops mid-stream and JSON that does not parse are all the same story to the user.
+    if (err instanceof FetchBlockedError) throw err
     throw new FetchBlockedError(`Could not reach ${new URL(url).hostname} — ${PASTE_INSTEAD}`)
   } finally {
     clearTimeout(timer)
@@ -125,8 +172,10 @@ export function assertReachableAddress(url: URL): void {
   // A trailing dot is a legal, fully-qualified spelling of the same name — `localhost.`
   // resolves to ::1 — and it would otherwise walk past both the name below and the dotless
   // rule. The IPv4 rules need no equivalent: the URL parser already drops the dot from a
-  // dotted quad.
-  const host = url.hostname.toLowerCase().replace(/\.+$/, '')
+  // dotted quad. Only the dot that starts a run is tried as the start of the trailing run: the
+  // parser takes a host of any number of dots, and tried from every dot in a run that does
+  // not end the host, `\.+$` read the rest of the run again each time (20,000 dots, 1 s).
+  const host = url.hostname.toLowerCase().replace(/(?<!\.)\.+$/, '')
   if (host === 'metadata.google.internal') throw unreachable()
   // A URL parsed from an IPv6 literal keeps its brackets in `hostname`.
   if (host.startsWith('[') && host.endsWith(']')) {

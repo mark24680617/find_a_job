@@ -30,10 +30,15 @@ export interface BulletRewriteInput {
  *
  * (amended 2026-09-24, R43) Exported: Task E5b's fourth guard re-runs this exact rule from
  * outside the flow, so the smoke and the flow read a number the same way.
+ *
+ * The trailing run is looked for only where a run of separators starts: tried from every
+ * separator of a run that does not end the number, `[.,]+$` read the rest of the run again each
+ * time, and a "number" 40,000 separators long in a resume or a cited fact took 5 s (security
+ * review, 2026-10-08).
  */
 const DIGITS = /\d[\d,.]*/g
 export function digitTokens(text: string): string[] {
-  return [...text.matchAll(DIGITS)].map((m) => m[0].replace(/[.,]+$/, ''))
+  return [...text.matchAll(DIGITS)].map((m) => m[0].replace(/(?<![.,])[.,]+$/, ''))
 }
 
 // (amended 2026-09-24, R33) `bannedIn` and `escapeRe` moved to `src/ai/prompts/bulletRewrite.ts`

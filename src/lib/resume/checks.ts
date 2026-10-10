@@ -53,7 +53,12 @@ export const LIGATURE_CHECK = false
  */
 export const NEUTRAL_CHECK_IDS: CheckId[] = ['employment-gap']
 
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
+/**
+ * Tried only where a run of address characters starts (the lookbehind), which finds the same
+ * address: from every character inside a run with no "@", it read the rest of the run again, and
+ * one line of 40,000 letters took 5 s (security review, 2026-10-08).
+ */
+const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
 const PHONE = /\+?\d[\d ().-]{7,}\d/g
 /** A span of years, which PHONE's character class also matches: `2015-2019` is not a number to call. */
 const YEAR_RANGE = /^(?:19|20)\d\d\s*[-–—]\s*(?:19|20)\d\d$/

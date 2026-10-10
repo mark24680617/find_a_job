@@ -19,9 +19,13 @@ docs
 AGENTS.md
 CLAUDE.md
 .DS_Store
-# Local tool state (session memory, language-server cache), never part of the service.
+# Local tool state (session memory, language-server cache, agent worktrees, browser-tool logs),
+# never part of the service. A worktree under .claude/ is a second copy of src/, which the
+# build's type-check would read too.
 .remember
 .serena
+.claude
+.playwright-mcp
 
 # Secrets: env vars are set on the service, never baked into the image.
 .env*

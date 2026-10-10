@@ -1,0 +1,434 @@
+[
+  {
+    "name": "fixture generic.html",
+    "html": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Software Engineer (Remote), Softech Associate | Python.org</title>\n<style>.listing-company { font-weight: 700; } .do-not-print { display: none; }</style>\n<script>window.jQuery || document.write('<script src=\"/static/js/libs/jquery-1.8.2.min.js\"><\\/script>')</script>\n</head>\n<body>\n<header class=\"main-header\">\n    <div class=\"site-headline\">\n                    <a href=\"/\"><img class=\"python-logo\" src=\"/static/img/python-logo.png\" alt=\"python&trade;\"></a>\n                </div>\n</header>\n<nav class=\"meta-navigation container\">\n    <div class=\"skip-link screen-reader-text\">\n                    <a href=\"#content\" title=\"Skip to content\">Skip to content</a>\n                </div>\n</nav>\n<div class=\"main-content\">\n    <h1 class=\"listing-company\">\n        <span class=\"listing-company-name\">\n\t    <span class=\"company-name\">\n\t      Software Engineer (Remote)\n              \n\t      <span class=\"listing-new\">New</span>\n              \n\t      <br/>\n              Softech Associate\n\t    </span>\n            \n        </span>\n        <span class=\"listing-location\"><a href=\"/jobs/location/panama-city-beach-florida-united-states/\" title=\"More jobs in Panama City Beach, Florida, United States\">Panama City Beach, Florida, United States</a></span>\n    </h1>\n\n    <!-- User input html/markup/rst/whatever -->\n    <div class=\"job-description\">\n\n        <h2>Job Title </h2>\n\n        Software Engineer (Remote)\n\n        <h2>Job Description</h2>\n\n        <p>Join Softech Associate to build and ship real software for our clients. We are looking for engineers with strong fundamentals and excellent communication who want to grow on a remote-first team.</p>\n<p>What we're looking for</p>\n<ul class=\"simple\">\n<li>Strong foundational knowledge of computer science and software engineering</li>\n<li>Comfort with data structures, algorithms, system design, and clean coding principles</li>\n<li>Ability to explain technical concepts clearly and logically</li>\n<li>Advanced-level English communication skills</li>\n<li>Confidence and clarity when reasoning through technical problems</li>\n</ul>\n\n\n        <h2>Restrictions</h2>\n        <ul>\n            \n            <li><strong>No telecommuting</strong></li>\n            \n\n            \n            <li><strong>Agencies are OK</strong></li>\n            \n        </ul>\n\n        \n        <h2>Requirements</h2>\n        <p>Responsibilities</p>\n<ul class=\"simple\">\n<li>Build and maintain real client projects across the stack</li>\n<li>Participate in system design discussions and coding tasks</li>\n<li>Collaborate in mock interviews and technical discussions to grow as a team</li>\n<li>Communicate progress and trade-offs clearly with the team and clients</li>\n<li>Write clean, tested, maintainable code</li>\n</ul>\n<p>Preferred technical background</p>\n<p>Frontend\nReact · Next.js · TypeScript · JavaScript</p>\n<p>Backend\nNode.js · Python · FastAPI · Flask · Express</p>\n<p>Databases\nPostgreSQL · MongoDB · MySQL</p>\n<p>Cloud\nAWS · Azure · GCP</p>\n<p>Experience with AI tools, LLMs, or modern developer platforms is a plus.</p>\n\n        \n\n        \n        <h2>About the Company</h2>\n        <p>Softech Associate is a software engineering and IT consulting company based in Florida. They help companies build and modernize software, covering full-stack development, cloud infrastructure, system design, databases, and AI solutions. From what I saw, they work as a remote-first engineering partner and can support clients with full projects, dedicated engineering teams, or technical consulting.</p>\n    </div>\n</div>\n<footer id=\"site-map\" class=\"main-footer\">\n    <a id=\"back-to-top-1\" class=\"jump-link\" href=\"#python-network\"><span aria-hidden=\"true\" class=\"icon-arrow-up\"><span>&#9650;</span></span> Back to Top</a>\n</footer>\n</body>\n</html>\n",
+    "text": "Software Engineer (Remote), Softech Associate | Python.org\n\nSoftware Engineer (Remote)\n\nNew\n\nSoftech Associate\n\nPanama City Beach, Florida, United States\n\nJob Title\n\nSoftware Engineer (Remote)\n\nJob Description\n\nJoin Softech Associate to build and ship real software for our clients. We are looking for engineers with strong fundamentals and excellent communication who want to grow on a remote-first team.\n\nWhat we're looking for\n\nStrong foundational knowledge of computer science and software engineering\n\nComfort with data structures, algorithms, system design, and clean coding principles\n\nAbility to explain technical concepts clearly and logically\n\nAdvanced-level English communication skills\n\nConfidence and clarity when reasoning through technical problems\n\nRestrictions\n\nNo telecommuting\n\nAgencies are OK\n\nRequirements\n\nResponsibilities\n\nBuild and maintain real client projects across the stack\n\nParticipate in system design discussions and coding tasks\n\nCollaborate in mock interviews and technical discussions to grow as a team\n\nCommunicate progress and trade-offs clearly with the team and clients\n\nWrite clean, tested, maintainable code\n\nPreferred technical background\n\nFrontend\nReact · Next.js · TypeScript · JavaScript\n\nBackend\nNode.js · Python · FastAPI · Flask · Express\n\nDatabases\nPostgreSQL · MongoDB · MySQL\n\nCloud\nAWS · Azure · GCP\n\nExperience with AI tools, LLMs, or modern developer platforms is a plus.\n\nAbout the Company\n\nSoftech Associate is a software engineering and IT consulting company based in Florida. They help companies build and modernize software, covering full-stack development, cloud infrastructure, system design, databases, and AI solutions. From what I saw, they work as a remote-first engineering partner and can support clients with full projects, dedicated engineering teams, or technical consulting.",
+    "title": "Software Engineer (Remote), Softech Associate | Python.org"
+  },
+  {
+    "name": "fixture greenhouse content (decoded, as greenhouse.ts reads it)",
+    "html": "<div class=\"content-intro\"><h2>About Vercel:</h2>\n<p><span data-sheets-root=\"1\">Vercel is the agentic infrastructure company. We free people and agents to ship what’s next.</span></p>\n<p><span data-sheets-root=\"1\">For more than a decade, Vercel has shaped how the web is built. As the team behind Next.js, v0, and AI SDK, we create prod</p>",
+    "text": "About Vercel:\n\nVercel is the agentic infrastructure company. We free people and agents to ship what’s next.\n\nFor more than a decade, Vercel has shaped how the web is built. As the team behind Next.js, v0, and AI SDK, we create prod",
+    "title": null
+  },
+  {
+    "name": "fixture lever lists[0].content",
+    "html": "\n<li>Prepare non-sterile hazardous and non-hazardous compounded medications according to USP &lt;795&gt;, &lt;800&gt;, and company SOPs</li>\n<li>Adhere to strict gowning, personal protective equipment (PPE), and safety procedures for hazardous drug handling</li>",
+    "text": "Prepare non-sterile hazardous and non-hazardous compounded medications according to USP <795>, <800>, and company SOPs\n\nAdhere to strict gowning, personal protective equipment (PPE), and safety procedures for hazardous drug handling",
+    "title": null
+  },
+  {
+    "name": "fixture lever description",
+    "html": "<div>Ro is a direct-to-patient healthcare company with a mission of helping patients achieve their health goals by delivering the easiest, most effective care possible. Ro is the only company to offer nationwide telehealth, labs, and pharmacy services. This is enabled by Ro's vertically integrated p</p>",
+    "text": "Ro is a direct-to-patient healthcare company with a mission of helping patients achieve their health goals by delivering the easiest, most effective care possible. Ro is the only company to offer nationwide telehealth, labs, and pharmacy services. This is enabled by Ro's vertically integrated p",
+    "title": null
+  },
+  {
+    "name": "fixture lever additional",
+    "html": "<div>The target hourly rate for this position ranges from $23 to $27, in addition to a competitive equity and benefits package (as applicable). When determining compensation, we analyze and carefully </p>",
+    "text": "The target hourly rate for this position ranges from $23 to $27, in addition to a competitive equity and benefits package (as applicable). When determining compensation, we analyze and carefully",
+    "title": null
+  },
+  {
+    "name": "fixture lever opening",
+    "html": "<div>Ro is a direct-to-patient healthcare company with a mission of helping patients achieve their health goals by delivering the easiest, most effective care possible. Ro is the only company to offer nationwide telehealth, labs, and pharmacy services. This is enabled by Ro's vertically integrated platform that helps patients achieve their goals through a convenient, end-to-end healthcare experience spanning from diagnosis, to delivery of medication, to ongoing care. Since 2017, Ro has helped millions of patients in nearly every single county in the United States, including 99% of primary care deserts.</div>\n<div>&nbsp;</div>\n<div>Ro is consistently recognized as a top workplace in Health Care, in New York, and for Women and Parents&mdash;earning more than 20 honors from Fortune, Great Place to Work, and PEOPLE since 2021. In 2025 alone, we ranked top 5 among medium workplaces in Health Care and New York, and top 50 nationwide.</div>",
+    "text": "Ro is a direct-to-patient healthcare company with a mission of helping patients achieve their health goals by delivering the easiest, most effective care possible. Ro is the only company to offer nationwide telehealth, labs, and pharmacy services. This is enabled by Ro's vertically integrated platform that helps patients achieve their goals through a convenient, end-to-end healthcare experience spanning from diagnosis, to delivery of medication, to ongoing care. Since 2017, Ro has helped millions of patients in nearly every single county in the United States, including 99% of primary care deserts.\n\nRo is consistently recognized as a top workplace in Health Care, in New York, and for Women and Parents—earning more than 20 honors from Fortune, Great Place to Work, and PEOPLE since 2021. In 2025 alone, we ranked top 5 among medium workplaces in Health Care and New York, and top 50 nationwide.",
+    "title": null
+  },
+  {
+    "name": "fixture lever descriptionBody",
+    "html": "<div><span style=\"font-size: 16px;\">As a&nbsp;</span><strong style=\"font-size: 16px;\">Compounding Pharmacy Technician</strong><span style=\"font-size: 16px;\"> , you will be responsible for the accurate</p>",
+    "text": "As a\n\nCompounding Pharmacy Technician\n\n, you will be responsible for the accurate",
+    "title": null
+  },
+  {
+    "name": "fixture ashby descriptionHtml",
+    "html": "<h2>Build a Safer World.</h2><p style=\"min-height:1.5em\">TRM Labs provides AI-powered intelligence solutions that help public and private sector agencies investigate and disrupt crime. TRM's platforms enable investigators to trace illicit activity, build cases, and construct operating pictures of threat networks. Leading agencie</p>",
+    "text": "Build a Safer World.\n\nTRM Labs provides AI-powered intelligence solutions that help public and private sector agencies investigate and disrupt crime. TRM's platforms enable investigators to trace illicit activity, build cases, and construct operating pictures of threat networks. Leading agencie",
+    "title": null
+  },
+  {
+    "name": "fixture hn-item text 0",
+    "html": "<p>Has anyone done their loop?</p>",
+    "text": "Has anyone done their loop?",
+    "title": null
+  },
+  {
+    "name": "fixture hn-item text 1",
+    "html": "<p>Yes &mdash; recruiter call, take-home, then onsite.</p>",
+    "text": "Yes — recruiter call, take-home, then onsite.",
+    "title": null
+  },
+  {
+    "name": "fixture hn-item text 2",
+    "html": "<p>Same. Take-home was 3 days.</p>",
+    "text": "Same. Take-home was 3 days.",
+    "title": null
+  },
+  {
+    "name": "posting page with chrome",
+    "html": "<!DOCTYPE html>\n<html><head>\n<meta charset=\"utf-8\">\n<title data-x=\"1\">Staff Engineer &mdash; Payments | Marram Systems</title>\n<style>body { margin: 0 } .a > .b { color: red }</style>\n<script type=\"application/ld+json\">{\"@type\": \"JobPosting\", \"title\": \"Staff Engineer\"}</script>\n<script>if (a < b && c > d) { document.write('<script src=\"x.js\"><\\/script>') }</script>\n</head>\n<body>\n<header class=\"site\"><a href=\"/\">Marram</a><nav><a href=\"/jobs\">Jobs</a></nav></header>\n<!-- tracking: do not remove -->\n<main>\n<h1>Staff Engineer, Payments</h1>\n<p>We move money for 4,000 merchants&nbsp;&ndash; and we&rsquo;re hiring.</p>\n<ul><li>Own the ledger&#39;s write path</li><li>Cut p99 from 840ms to 210ms</li></ul>\n<p>Salary: &pound;90k &#x2013; &#163;110k &amp; equity. Escaped markup: &lt;p&gt; stays text.</p>\n</main>\n<footer><p>&copy; 2026 Marram Systems</p></footer>\n</body></html>",
+    "text": "Staff Engineer — Payments | Marram Systems\n\nStaff Engineer, Payments\n\nWe move money for 4,000 merchants – and we’re hiring.\n\nOwn the ledger's write path\n\nCut p99 from 840ms to 210ms\n\nSalary: &pound;90k – £110k & equity. Escaped markup: <p> stays text.",
+    "title": "Staff Engineer &mdash; Payments | Marram Systems"
+  },
+  {
+    "name": "script with a string that looks like a closer",
+    "html": "<p>a</p><script>var s = \"</scr\" + \"ipt>\"; var t = '<\\/script>';</script><p>b</p>",
+    "text": "a\n\nb",
+    "title": null
+  },
+  {
+    "name": "script whose string holds a real closer",
+    "html": "<p>a</p><script>var s = \"</script>\"; alert(1)</script><p>b</p>",
+    "text": "a\n\"; alert(1)\n\nb",
+    "title": null
+  },
+  {
+    "name": "uppercase and mixed-case chrome",
+    "html": "<SCRIPT>x()</script><Style>.a{}</STYLE><NAV>menu</Nav><p>kept</p>",
+    "text": "kept",
+    "title": null
+  },
+  {
+    "name": "chrome opener with \">\" inside an attribute",
+    "html": "<script data-x=\"a>b\">code()</script><p>kept</p>",
+    "text": "kept",
+    "title": null
+  },
+  {
+    "name": "chrome opener spanning lines",
+    "html": "<style\nmedia=\"print\"\n>.x{}</style><p>kept</p>",
+    "text": "kept",
+    "title": null
+  },
+  {
+    "name": "closer with a space before \">\" is not a closer",
+    "html": "<script>x()</script ><p>mid</p></script><p>end</p>",
+    "text": "end",
+    "title": null
+  },
+  {
+    "name": "closer with a space after \"</\" is not a closer",
+    "html": "<style>.a{}</ style><p>mid</p></style><p>end</p>",
+    "text": "end",
+    "title": null
+  },
+  {
+    "name": "nested chrome of the same name",
+    "html": "<nav>a<nav>b</nav>c</nav><p>kept</p>",
+    "text": "c\n\nkept",
+    "title": null
+  },
+  {
+    "name": "interleaved chrome",
+    "html": "<nav>a<script>b</nav>c</script><p>kept</p>",
+    "text": "c\n\nkept",
+    "title": null
+  },
+  {
+    "name": "header holding a nav",
+    "html": "<header><h2>Logo</h2><nav><a>x</a></nav></header><p>kept</p>",
+    "text": "kept",
+    "title": null
+  },
+  {
+    "name": "names that only start like chrome",
+    "html": "<navigation>n</navigation><header-x>h</header-x><header_x>u</header_x><scripts>s</scripts><footer2>f</footer2><styles>t</styles><p>kept</p>",
+    "text": "n\n\nh\n\nu\n\ns\n\nf\n\nt\n\nkept",
+    "title": null
+  },
+  {
+    "name": "a hyphenated name counts as its prefix",
+    "html": "<header-x>h</header><p>kept</p>",
+    "text": "kept",
+    "title": null
+  },
+  {
+    "name": "empty chrome elements",
+    "html": "<script></script><style></style><nav></nav><p>kept</p>",
+    "text": "kept",
+    "title": null
+  },
+  {
+    "name": "chrome opener at the very end",
+    "html": "<p>kept</p><script",
+    "text": "kept\n<script",
+    "title": null
+  },
+  {
+    "name": "chrome opener with no \">\"",
+    "html": "<p>kept</p><script src=\"x\"<p>more</p>",
+    "text": "kept\n\nmore",
+    "title": null
+  },
+  {
+    "name": "chrome opener closed by a later \">\" far away",
+    "html": "<style <p>one</p> two > three </style> four",
+    "text": "four",
+    "title": null
+  },
+  {
+    "name": "unclosed script, then a closed one",
+    "html": "<script>never closed<p>x</p><script>closed</script><p>after</p>",
+    "text": "after",
+    "title": null
+  },
+  {
+    "name": "unclosed nav before the body",
+    "html": "<nav><a href=\"/\">Home</a><main><h1>Role</h1><p>Body text of the posting.</p></main>",
+    "text": "Home\n\nRole\n\nBody text of the posting.",
+    "title": null
+  },
+  {
+    "name": "unclosed header (malformed but common)",
+    "html": "<header>Logo<p>Senior Engineer</p><p>We build things.</p><footer>x</footer>",
+    "text": "Logo\nSenior Engineer\n\nWe build things.",
+    "title": null
+  },
+  {
+    "name": "unclosed footer at the end (a truncated page)",
+    "html": "<p>Body.</p><footer><p>&copy; 2026</p><script>trac",
+    "text": "Body.\n\n&copy; 2026\n\ntrac",
+    "title": null
+  },
+  {
+    "name": "closer before any opener",
+    "html": "</script><p>kept</p></nav>",
+    "text": "kept",
+    "title": null
+  },
+  {
+    "name": "İ and the Kelvin sign near a closer",
+    "html": "<script>a</scrİpt>b</script><p>İstanbul Kelvin</p><nav>x</naK>y</nav>",
+    "text": "İstanbul Kelvin",
+    "title": null
+  },
+  {
+    "name": "comments of every length",
+    "html": "a<!---->b<!-- c -->d<!--->e-->f<!-->g-->h",
+    "text": "a b d f h",
+    "title": null
+  },
+  {
+    "name": "a comment holding markup",
+    "html": "<p>a</p><!-- <script>x</script> <p>hidden</p> --><p>b</p>",
+    "text": "a\n\nb",
+    "title": null
+  },
+  {
+    "name": "a comment inside a script",
+    "html": "<script><!-- x --></script><p>kept</p>",
+    "text": "kept",
+    "title": null
+  },
+  {
+    "name": "a script inside a comment",
+    "html": "<!-- <script> --><p>kept</p><!-- </script> -->",
+    "text": "",
+    "title": null
+  },
+  {
+    "name": "an unclosed comment",
+    "html": "<p>a</p><!-- never closed <p>b</p>",
+    "text": "a\n\nb",
+    "title": null
+  },
+  {
+    "name": "a closed comment then an unclosed one",
+    "html": "<p>a</p><!-- x --><p>b</p><!-- y <p>c</p>",
+    "text": "a\n\nb\n\nc",
+    "title": null
+  },
+  {
+    "name": "comment opener inside a tag",
+    "html": "<p title=\"<!--\">a</p><p>b</p>-->c",
+    "text": "<p title=\" c",
+    "title": null
+  },
+  {
+    "name": "conditional comment",
+    "html": "<!--[if IE]><p>ie</p><![endif]--><p>kept</p>",
+    "text": "kept",
+    "title": null
+  },
+  {
+    "name": "title with entities and whitespace",
+    "html": "<head><title>\n  Data &amp; ML Engineer\n  &ndash; Acme  </title></head><p>x</p>",
+    "text": "Data & ML Engineer\n– Acme\n\nx",
+    "title": "\n  Data &amp; ML Engineer\n  &ndash; Acme  "
+  },
+  {
+    "name": "uppercase title",
+    "html": "<TITLE>Role | Co</TITLE><p>x</p>",
+    "text": "Role | Co\n\nx",
+    "title": "Role | Co"
+  },
+  {
+    "name": "two titles",
+    "html": "<title>First</title><title>Second</title>",
+    "text": "First\n\nSecond",
+    "title": "First"
+  },
+  {
+    "name": "title inside a script before the real one",
+    "html": "<script>var t = \"<title>\"</script><title>Real | Co</title>",
+    "text": "Real | Co",
+    "title": "\"</script><title>Real | Co"
+  },
+  {
+    "name": "titles-prefixed element",
+    "html": "<titles>Not a title</titles><title>Real</title>",
+    "text": "Not a title\n\nReal",
+    "title": "Not a title</titles><title>Real"
+  },
+  {
+    "name": "title with no closer",
+    "html": "<title>Never closed<p>x</p>",
+    "text": "Never closed\nx",
+    "title": null
+  },
+  {
+    "name": "title opener with no \">\"",
+    "html": "<title Never closed",
+    "text": "<title Never closed",
+    "title": null
+  },
+  {
+    "name": "title closer only",
+    "html": "</title><p>x</p>",
+    "text": "x",
+    "title": null
+  },
+  {
+    "name": "empty title",
+    "html": "<title></title><p>x</p>",
+    "text": "x",
+    "title": ""
+  },
+  {
+    "name": "svg title inside the body",
+    "html": "<title>Page</title><svg><title>icon</title></svg>",
+    "text": "Page\n\nicon",
+    "title": "Page"
+  },
+  {
+    "name": "entities, valid and not",
+    "html": "&amp; &AMP; &lt;b&gt; &#65; &#x41; &#X41; &#0; &#xD800; &#x110000; &bogus; &amp;lt; &;",
+    "text": "& & <b> A A A &#0; &#xD800; &#x110000; &bogus; &lt; &;",
+    "title": null
+  },
+  {
+    "name": "escaped markup is text",
+    "html": "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>",
+    "text": "<script>alert(1)</script>",
+    "title": null
+  },
+  {
+    "name": "\"<\" inside an attribute value",
+    "html": "<a title=\"x < y\">link</a><img alt=\"a<b\">",
+    "text": "link",
+    "title": null
+  },
+  {
+    "name": "\">\" inside an attribute value",
+    "html": "<a title=\"x > y\">link</a>",
+    "text": "y\">link",
+    "title": null
+  },
+  {
+    "name": "a stray \"<\" in the copy",
+    "html": "Salary < 100k and 3 < 4 <p>kept</p>",
+    "text": "Salary\nkept",
+    "title": null
+  },
+  {
+    "name": "a trailing unclosed tag",
+    "html": "<p>kept</p><a href=\"x\"",
+    "text": "kept\n<a href=\"x\"",
+    "title": null
+  },
+  {
+    "name": "a lone \"<\" at the end",
+    "html": "kept <",
+    "text": "kept <",
+    "title": null
+  },
+  {
+    "name": "a lone \">\" in the copy",
+    "html": "a > b <p>c</p>",
+    "text": "a > b\nc",
+    "title": null
+  },
+  {
+    "name": "CDATA and doctype",
+    "html": "<!DOCTYPE html><![CDATA[x<y]]><p>kept</p>",
+    "text": "kept",
+    "title": null
+  },
+  {
+    "name": "whitespace of every kind",
+    "html": "<p>a\t\t b</p>\r\n\r\n\r\n<p> c   d </p>\n\n\n\n<div>   </div>e",
+    "text": "a b\n\nc d\n\ne",
+    "title": null
+  },
+  {
+    "name": "empty string",
+    "html": "",
+    "text": "",
+    "title": null
+  },
+  {
+    "name": "text with no markup",
+    "html": "Just text, with  two spaces and a\nnewline.",
+    "text": "Just text, with two spaces and a\nnewline.",
+    "title": null
+  },
+  {
+    "name": "hostile \"<\" x 50",
+    "html": "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+    "text": "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+    "title": null
+  },
+  {
+    "name": "hostile \"<style \" x 20",
+    "html": "<style <style <style <style <style <style <style <style <style <style <style <style <style <style <style <style <style <style <style <style ",
+    "text": "<style <style <style <style <style <style <style <style <style <style <style <style <style <style <style <style <style <style <style <style",
+    "title": null
+  },
+  {
+    "name": "hostile \"<script>\" x 20",
+    "html": "<script><script><script><script><script><script><script><script><script><script><script><script><script><script><script><script><script><script><script><script>",
+    "text": "",
+    "title": null
+  },
+  {
+    "name": "hostile \"<nav>\" x 20",
+    "html": "<nav><nav><nav><nav><nav><nav><nav><nav><nav><nav><nav><nav><nav><nav><nav><nav><nav><nav><nav><nav>",
+    "text": "",
+    "title": null
+  },
+  {
+    "name": "hostile \"<!--\" x 20",
+    "html": "<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--",
+    "text": "<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--<!--",
+    "title": null
+  },
+  {
+    "name": "hostile \"<title>\" x 20",
+    "html": "<title><title><title><title><title><title><title><title><title><title><title><title><title><title><title><title><title><title><title><title>",
+    "text": "",
+    "title": null
+  },
+  {
+    "name": "hostile \"<title \" x 20",
+    "html": "<title <title <title <title <title <title <title <title <title <title <title <title <title <title <title <title <title <title <title <title ",
+    "text": "<title <title <title <title <title <title <title <title <title <title <title <title <title <title <title <title <title <title <title <title",
+    "title": null
+  },
+  {
+    "name": "hostile mix",
+    "html": "<script><!--<style <title><nav<script><!--<style <title><nav<script><!--<style <title><nav<script><!--<style <title><nav<script><!--<style <title><nav<script><!--<style <title><nav<script><!--<style <title><nav<script><!--<style <title><nav<script><!--<style <title><nav<script><!--<style <title><nav></nav>",
+    "text": "",
+    "title": null
+  }
+]

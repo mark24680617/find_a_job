@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // The Remember plugin's scratch files. Git ignores them through .remember/.gitignore,
     // which flat config does not read.
     ".remember/**",
+    // Agent git worktrees: a second copy of the repo, build output included.
+    ".claude/**",
   ]),
 ]);
 

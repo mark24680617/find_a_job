@@ -3,10 +3,18 @@
  * parser dependency: postings are simple documents, and a regex pass that drops the
  * non-content elements first is enough. Nothing here touches the DOM, so it runs
  * server-side and in tests unchanged.
+ *
+ * Every pass reads the page once. The page is whatever a URL a person chose served, read
+ * before anything meters the request, and the patterns these passes run were each applied at
+ * every position: from every opener with no closer they read the rest of the page again, so
+ * 80,000 "<" took 17 s and blocked every request on the instance (security review,
+ * 2026-10-08). The answers are the ones those patterns gave, exactly; tests/linearTime.test.ts
+ * holds the passes to both.
  */
 
 // Removed with their content — these carry site chrome, not the posting.
-const CHROME = /<(script|style|nav|header|footer)\b[^>]*>[\s\S]*?<\/\1>/gi
+const CHROME = /<(script|style|nav|header|footer)\b[^>]*>[\s\S]*?<\/\1>/
+const CHROME_OPENER = /<(script|style|nav|header|footer)\b/gi
 
 const NAMED_ENTITIES: Record<string, string> = {
   amp: '&',
@@ -42,12 +50,72 @@ export function decodeEntities(html: string): string {
   })
 }
 
+/**
+ * Each chrome element swapped for a space: from its opener to the first closer of its name,
+ * which is what `CHROME` matches. It is tried only where an opener is, and never again for a
+ * name it has once failed on — an opener with no closer of its name after it has none after any
+ * later opener of that name either, nor a ">" if it had none. Those openers stay in the text,
+ * as they always did, for the tag pass to strip.
+ */
+function dropChrome(html: string): string {
+  const element = new RegExp(CHROME, 'iy')
+  const unclosed = new Set<string>()
+  let out = ''
+  let kept = 0 // everything before this is already in `out`
+  for (const opener of html.matchAll(CHROME_OPENER)) {
+    const name = opener[1].toLowerCase()
+    if (opener.index < kept || unclosed.has(name)) continue
+    element.lastIndex = opener.index
+    if (element.exec(html) === null) {
+      unclosed.add(name)
+      continue
+    }
+    out += html.slice(kept, opener.index) + ' '
+    kept = element.lastIndex
+  }
+  return out + html.slice(kept)
+}
+
+/** Each comment swapped for a space: `<!--` to the first `-->` after it, as `/<!--[\s\S]*?-->/g`. */
+function dropComments(html: string): string {
+  let out = ''
+  let kept = 0
+  for (let open = html.indexOf('<!--'); open >= 0; open = html.indexOf('<!--', kept)) {
+    const close = html.indexOf('-->', open + 4)
+    // No closer after this opener means none after any later one: the rest stays as it is.
+    if (close < 0) break
+    out += html.slice(kept, open) + ' '
+    kept = close + 3
+  }
+  return out + html.slice(kept)
+}
+
+/**
+ * Each tag swapped for a line break: "<" to the first ">" after it. Past the page's last ">",
+ * no "<" has one, so that tail is kept as it is without being searched — searched, every "<" in
+ * it read the rest of the page for a ">" that is not there.
+ */
+function dropTags(html: string): string {
+  const end = html.lastIndexOf('>') + 1
+  return html.slice(0, end).replace(/<[^>]*>/g, '\n') + html.slice(end)
+}
+
+/**
+ * What the page's first `<title>` holds, entities still encoded, or null when it has none —
+ * what `/<title[^>]*>([\s\S]*?)<\/title>/i` captures. Only the first opener is tried: with no
+ * ">" or no closer after it, no later opener has one either.
+ */
+export function rawTitle(html: string): string | null {
+  const opener = html.search(/<title/i)
+  if (opener < 0) return null
+  const title = /<title[^>]*>([\s\S]*?)<\/title>/iy
+  title.lastIndex = opener
+  return title.exec(html)?.[1] ?? null
+}
+
 /** Strip chrome and markup, decode entities, and collapse the whitespace HTML leaves behind. */
 export function htmlToText(html: string): string {
-  const stripped = html
-    .replace(CHROME, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<[^>]*>/g, '\n')
+  const stripped = dropTags(dropComments(dropChrome(html)))
 
   // Decoding after stripping, so that an escaped `&lt;p&gt;` in the copy is never read as a tag.
   return decodeEntities(stripped)

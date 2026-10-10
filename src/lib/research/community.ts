@@ -1,4 +1,4 @@
-import { decodeEntities, htmlToText } from '@/adapters/html'
+import { decodeEntities, htmlToText, rawTitle } from '@/adapters/html'
 import { getGuardedText, getJson } from '@/adapters/http'
 import { REDDIT_UA, redditToken } from '@/lib/research/redditAuth'
 import { capTitle, hostOf, under, type SourceCandidate } from '@/lib/research/sources'
@@ -256,17 +256,15 @@ const REDDIT_THREAD_PATH = /^\/r\/[A-Za-z0-9_]+\/comments\/[a-z0-9]+(?:\/[A-Za-z
  */
 const HN_ITEM_ID = /^\d+$/
 
-const HTML_TITLE = /<title[^>]*>([\s\S]*?)<\/title>/i
-
 /**
  * What the page calls itself, taken from the raw HTML before `htmlToText` throws the head
  * away. Most sources reach us named by their bare domain, which is what grounding hands over
  * and what makes an evidence list unreadable; a page we actually fetched can do better.
  */
 function pageTitle(html: string): string | undefined {
-  const match = HTML_TITLE.exec(html)
-  if (!match) return undefined
-  const title = capTitle(decodeEntities(match[1]))
+  const raw = rawTitle(html)
+  if (raw === null) return undefined
+  const title = capTitle(decodeEntities(raw))
   return title === '' ? undefined : title
 }
 

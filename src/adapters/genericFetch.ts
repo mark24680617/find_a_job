@@ -1,4 +1,4 @@
-import { decodeEntities, htmlToText } from './html'
+import { decodeEntities, htmlToText, rawTitle } from './html'
 import { getGuardedText } from './http'
 import { FetchBlockedError, PASTE_INSTEAD, type ParsedPosting } from './types'
 
@@ -21,7 +21,7 @@ export function parseGeneric(html: string): ParsedPosting {
     )
   }
 
-  const title = decodeEntities(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? '')
+  const title = decodeEntities(rawTitle(html) ?? '')
     .replace(/\s+/g, ' ')
     .trim()
   const parts = title.split(TITLE_SEPARATORS).filter(Boolean)

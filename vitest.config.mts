@@ -1,7 +1,12 @@
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  test: {
+    // An agent's git worktree under .claude/ holds a full copy of tests/, whose copies fail
+    // against this checkout's React; they are not this checkout's tests.
+    exclude: [...configDefaults.exclude, '.claude/**'],
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
